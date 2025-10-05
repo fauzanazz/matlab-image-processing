@@ -1,37 +1,26 @@
 function ImageProcessingGUI()
-    % Image Processing GUI - Integrates all image processing tasks
-    % Course: IF4073 Pemrosesan Citra Digital
-    % Semester: 2025/2026 - Semester I
-    % Institution: Program Studi Teknik Informatika, STEI - ITB
-
-    % Add paths to task folders
     addpath('../task1');
     addpath('../task2');
     addpath('../task3');
     addpath('../task4');
 
-    % Create main figure
-    fig = uifigure('Name', 'Image Processing GUI', ...
-                   'Position', [100 100 1400 800], ...
-                   'Color', [0.94 0.94 0.94]);
+    fig = uifigure('Name', 'Image Processing GUI - IF4073', ...
+                   'Position', [100 100 1450 820], ...
+                   'Color', [0.15 0.17 0.21]);
 
-    % Global variables
     currentImage = [];
     referenceImage = [];
     processedImage = [];
 
-    % Create menu bar
     mFile = uimenu(fig, 'Text', 'File');
     uimenu(mFile, 'Text', 'Load Image', 'MenuSelectedFcn', @loadImage);
     uimenu(mFile, 'Text', 'Load Reference Image', 'MenuSelectedFcn', @loadReferenceImage);
     uimenu(mFile, 'Text', 'Save Processed Image', 'MenuSelectedFcn', @saveImage);
     uimenu(mFile, 'Text', 'Exit', 'MenuSelectedFcn', @(~,~)close(fig), 'Separator', 'on');
 
-    % Task 1: Histogram
     mTask1 = uimenu(fig, 'Text', 'Task 1 - Histogram');
     uimenu(mTask1, 'Text', 'Calculate Histogram', 'MenuSelectedFcn', @calculateHistogram);
 
-    % Task 2: Image Enhancement
     mTask2 = uimenu(fig, 'Text', 'Task 2 - Enhancement');
     uimenu(mTask2, 'Text', 'Image Brightening', 'MenuSelectedFcn', @applyBrightening);
     uimenu(mTask2, 'Text', 'Image Negative', 'MenuSelectedFcn', @applyNegative);
@@ -39,64 +28,111 @@ function ImageProcessingGUI()
     uimenu(mTask2, 'Text', 'Power Transformation', 'MenuSelectedFcn', @applyPowerTransform);
     uimenu(mTask2, 'Text', 'Contrast Stretching', 'MenuSelectedFcn', @applyContrastStretching);
 
-    % Task 3: Histogram Equalization
     mTask3 = uimenu(fig, 'Text', 'Task 3 - Equalization');
     uimenu(mTask3, 'Text', 'Histogram Equalization', 'MenuSelectedFcn', @applyEqualization);
 
-    % Task 4: Histogram Specification
     mTask4 = uimenu(fig, 'Text', 'Task 4 - Specification');
     uimenu(mTask4, 'Text', 'Histogram Matching', 'MenuSelectedFcn', @applyMatching);
 
-    % Create panels
+    panelBg = [0.95 0.95 0.97];
+    panelFg = [0.2 0.24 0.3];
+    accentColor = [0.26 0.52 0.96];
+
     inputPanel = uipanel(fig, 'Title', 'Input Image', ...
-                        'Position', [20 420 420 360], ...
-                        'BackgroundColor', 'white');
+                        'Position', [15 430 430 370], ...
+                        'BackgroundColor', panelBg, ...
+                        'ForegroundColor', panelFg, ...
+                        'FontSize', 12, 'FontWeight', 'bold', ...
+                        'BorderType', 'line', 'HighlightColor', accentColor);
 
     inputHistPanel = uipanel(fig, 'Title', 'Input Histogram', ...
-                            'Position', [20 20 420 380], ...
-                            'BackgroundColor', 'white');
-
-    outputPanel = uipanel(fig, 'Title', 'Output Image', ...
-                         'Position', [960 420 420 360], ...
-                         'BackgroundColor', 'white');
-
-    outputHistPanel = uipanel(fig, 'Title', 'Output Histogram', ...
-                             'Position', [960 20 420 380], ...
-                             'BackgroundColor', 'white');
+                            'Position', [15 15 430 400], ...
+                            'BackgroundColor', panelBg, ...
+                            'ForegroundColor', panelFg, ...
+                            'FontSize', 12, 'FontWeight', 'bold', ...
+                            'BorderType', 'line', 'HighlightColor', accentColor);
 
     referencePanel = uipanel(fig, 'Title', 'Reference Image (Task 4)', ...
-                            'Position', [460 560 480 220], ...
-                            'BackgroundColor', 'white');
+                            'Position', [460 430 530 370], ...
+                            'BackgroundColor', panelBg, ...
+                            'ForegroundColor', panelFg, ...
+                            'FontSize', 11, 'FontWeight', 'bold', ...
+                            'BorderType', 'line', 'HighlightColor', [0.8 0.6 0.2]);
 
     referenceHistPanel = uipanel(fig, 'Title', 'Reference Histogram', ...
-                                'Position', [460 320 480 220], ...
-                                'BackgroundColor', 'white');
+                                'Position', [460 15 530 400], ...
+                                'BackgroundColor', panelBg, ...
+                                'ForegroundColor', panelFg, ...
+                                'FontSize', 11, 'FontWeight', 'bold', ...
+                                'BorderType', 'line', 'HighlightColor', [0.8 0.6 0.2]);
 
-    infoPanel = uipanel(fig, 'Title', 'Information', ...
-                       'Position', [460 20 480 280], ...
-                       'BackgroundColor', 'white');
+    outputPanel = uipanel(fig, 'Title', 'Output Image', ...
+                         'Position', [1005 430 430 370], ...
+                         'BackgroundColor', panelBg, ...
+                         'ForegroundColor', panelFg, ...
+                         'FontSize', 12, 'FontWeight', 'bold', ...
+                         'BorderType', 'line', 'HighlightColor', accentColor);
 
-    % Create axes for images
-    inputAxes = uiaxes(inputPanel, 'Position', [10 10 400 330]);
-    outputAxes = uiaxes(outputPanel, 'Position', [10 10 400 330]);
-    referenceAxes = uiaxes(referencePanel, 'Position', [10 10 460 190]);
+    outputHistPanel = uipanel(fig, 'Title', 'Output Histogram', ...
+                             'Position', [1005 15 430 400], ...
+                             'BackgroundColor', panelBg, ...
+                             'ForegroundColor', panelFg, ...
+                             'FontSize', 12, 'FontWeight', 'bold', ...
+                             'BorderType', 'line', 'HighlightColor', accentColor);
 
-    % Create axes for histograms
-    inputHistAxes = uiaxes(inputHistPanel, 'Position', [10 10 400 350]);
-    outputHistAxes = uiaxes(outputHistPanel, 'Position', [10 10 400 350]);
-    referenceHistAxes = uiaxes(referenceHistPanel, 'Position', [10 10 460 190]);
+    inputAxes = uiaxes(inputPanel, 'Position', [10 10 410 340]);
+    text(inputAxes, 0.5, 0.5, 'No image', 'HorizontalAlignment', 'center', ...
+         'FontSize', 14, 'FontWeight', 'bold', 'Color', [0.5 0.5 0.5], ...
+         'Units', 'normalized');
+    inputAxes.XTick = [];
+    inputAxes.YTick = [];
+    inputAxes.XColor = 'none';
+    inputAxes.YColor = 'none';
 
-    % Create text area for info
-    infoText = uitextarea(infoPanel, 'Position', [10 10 460 250], ...
-                         'Editable', 'off', 'FontName', 'Courier New', ...
-                         'Value', {'Welcome to Image Processing GUI!', '', ...
-                                   'Instructions:', ...
-                                   '1. Load an image using File > Load Image', ...
-                                   '2. Select processing from Task menus', ...
-                                   '3. View results in Output panels', ...
-                                   '4. Save results using File > Save'});
+    referenceAxes = uiaxes(referencePanel, 'Position', [10 10 510 340]);
+    text(referenceAxes, 0.5, 0.5, 'No image', 'HorizontalAlignment', 'center', ...
+         'FontSize', 14, 'FontWeight', 'bold', 'Color', [0.5 0.5 0.5], ...
+         'Units', 'normalized');
+    referenceAxes.XTick = [];
+    referenceAxes.YTick = [];
+    referenceAxes.XColor = 'none';
+    referenceAxes.YColor = 'none';
 
-    % Callback functions
+    outputAxes = uiaxes(outputPanel, 'Position', [10 10 410 340]);
+    text(outputAxes, 0.5, 0.5, 'No image', 'HorizontalAlignment', 'center', ...
+         'FontSize', 14, 'FontWeight', 'bold', 'Color', [0.5 0.5 0.5], ...
+         'Units', 'normalized');
+    outputAxes.XTick = [];
+    outputAxes.YTick = [];
+    outputAxes.XColor = 'none';
+    outputAxes.YColor = 'none';
+
+    inputHistAxes = uiaxes(inputHistPanel, 'Position', [10 10 410 370]);
+    text(inputHistAxes, 0.5, 0.5, 'No histogram', 'HorizontalAlignment', 'center', ...
+         'FontSize', 14, 'FontWeight', 'bold', 'Color', [0.5 0.5 0.5], ...
+         'Units', 'normalized');
+    inputHistAxes.XColor = [0 0 0];
+    inputHistAxes.YColor = [0 0 0];
+    inputHistAxes.XTick = [];
+    inputHistAxes.YTick = [];
+
+    referenceHistAxes = uiaxes(referenceHistPanel, 'Position', [10 10 510 370]);
+    text(referenceHistAxes, 0.5, 0.5, 'No histogram', 'HorizontalAlignment', 'center', ...
+         'FontSize', 14, 'FontWeight', 'bold', 'Color', [0.5 0.5 0.5], ...
+         'Units', 'normalized');
+    referenceHistAxes.XColor = [0 0 0];
+    referenceHistAxes.YColor = [0 0 0];
+    referenceHistAxes.XTick = [];
+    referenceHistAxes.YTick = [];
+
+    outputHistAxes = uiaxes(outputHistPanel, 'Position', [10 10 410 370]);
+    text(outputHistAxes, 0.5, 0.5, 'No histogram', 'HorizontalAlignment', 'center', ...
+         'FontSize', 14, 'FontWeight', 'bold', 'Color', [0.5 0.5 0.5], ...
+         'Units', 'normalized');
+    outputHistAxes.XColor = [0 0 0];
+    outputHistAxes.YColor = [0 0 0];
+    outputHistAxes.XTick = [];
+    outputHistAxes.YTick = [];
 
     function loadImage(~, ~)
         [filename, pathname] = uigetfile({'*.jpg;*.png;*.bmp;*.tif', 'Image Files'}, ...
@@ -105,11 +141,9 @@ function ImageProcessingGUI()
             currentImage = imread(fullfile(pathname, filename));
             displayImage(inputAxes, currentImage);
             displayHistogram(inputHistAxes, currentImage);
-            updateInfo(['Image loaded: ' filename]);
             cla(outputAxes);
             cla(outputHistAxes);
-
-            % Bring figure to front
+            % Bring figure to front to avoid dialog focus issues on some platforms
             figure(fig);
         end
     end
@@ -121,9 +155,7 @@ function ImageProcessingGUI()
             referenceImage = imread(fullfile(pathname, filename));
             displayImage(referenceAxes, referenceImage);
             displayHistogram(referenceHistAxes, referenceImage);
-            updateInfo(['Reference image loaded: ' filename]);
-
-            % Bring figure to front
+            % Bring figure to front to avoid dialog focus issues on some platforms
             figure(fig);
         end
     end
@@ -139,9 +171,7 @@ function ImageProcessingGUI()
                                          'Save processed image');
         if filename ~= 0
             imwrite(processedImage, fullfile(pathname, filename));
-            updateInfo(['Image saved: ' filename]);
-
-            % Bring figure to front
+            % Bring figure to front to avoid dialog focus issues on some platforms
             figure(fig);
         end
     end
@@ -153,7 +183,6 @@ function ImageProcessingGUI()
         end
 
         displayHistogram(outputHistAxes, currentImage);
-        updateInfo('Histogram calculated successfully!');
     end
 
     function applyBrightening(~, ~)
@@ -162,14 +191,30 @@ function ImageProcessingGUI()
             return;
         end
 
-        % Create dialog for parameters
-        dlg = uifigure('Name', 'Brightening Parameters', 'Position', [500 500 300 150]);
-        uilabel(dlg, 'Position', [20 100 100 22], 'Text', 'Multiplier (a):');
-        aField = uieditfield(dlg, 'numeric', 'Position', [130 100 150 22], 'Value', 1.0);
-        uilabel(dlg, 'Position', [20 60 100 22], 'Text', 'Offset (b):');
-        bField = uieditfield(dlg, 'numeric', 'Position', [130 60 150 22], 'Value', 50);
+        dlg = uifigure('Name', 'Brightening Parameters', ...
+                      'Position', [500 500 340 200], ...
+                      'Color', [0.95 0.95 0.97]);
 
-        uibutton(dlg, 'Position', [100 20 100 30], 'Text', 'Apply', ...
+        uilabel(dlg, 'Position', [20 145 300 25], ...
+               'Text', 'Formula: s = a × r + b', ...
+               'FontSize', 13, 'FontWeight', 'bold', ...
+               'HorizontalAlignment', 'center', ...
+               'FontColor', [0.2 0.2 0.2]);
+
+        uilabel(dlg, 'Position', [30 100 120 22], 'Text', 'Multiplier (a):', ...
+               'FontSize', 11, 'FontColor', [0.2 0.2 0.2]);
+        aField = uieditfield(dlg, 'numeric', 'Position', [160 100 150 30], ...
+                            'Value', 1.0, 'FontSize', 11);
+
+        uilabel(dlg, 'Position', [30 60 120 22], 'Text', 'Offset (b):', ...
+               'FontSize', 11, 'FontColor', [0.2 0.2 0.2]);
+        bField = uieditfield(dlg, 'numeric', 'Position', [160 60 150 30], ...
+                            'Value', 50, 'FontSize', 11);
+
+        uibutton(dlg, 'Position', [120 15 100 35], 'Text', 'Apply', ...
+                'FontSize', 11, 'FontWeight', 'bold', ...
+                'BackgroundColor', [0.26 0.52 0.96], ...
+                'FontColor', 'white', ...
                 'ButtonPushedFcn', @(~,~)applyBrighteningCallback(aField.Value, bField.Value, dlg));
     end
 
@@ -178,7 +223,6 @@ function ImageProcessingGUI()
         processedImage = image_brightening(currentImage, a, b);
         displayImage(outputAxes, processedImage);
         displayHistogram(outputHistAxes, processedImage);
-        updateInfo(sprintf('Brightening applied: s = %.2f*r + %.2f', a, b));
     end
 
     function applyNegative(~, ~)
@@ -190,7 +234,6 @@ function ImageProcessingGUI()
         processedImage = image_negative(currentImage);
         displayImage(outputAxes, processedImage);
         displayHistogram(outputHistAxes, processedImage);
-        updateInfo('Image negative applied: s = 255 - r');
     end
 
     function applyLogTransform(~, ~)
@@ -199,12 +242,25 @@ function ImageProcessingGUI()
             return;
         end
 
-        % Create dialog for parameter
-        dlg = uifigure('Name', 'Log Transform Parameter', 'Position', [500 500 300 100]);
-        uilabel(dlg, 'Position', [20 50 100 22], 'Text', 'Constant (c):');
-        cField = uieditfield(dlg, 'numeric', 'Position', [130 50 150 22], 'Value', 1.0);
+        dlg = uifigure('Name', 'Log Transform', ...
+                      'Position', [500 500 340 160], ...
+                      'Color', [0.95 0.95 0.97]);
 
-        uibutton(dlg, 'Position', [100 10 100 30], 'Text', 'Apply', ...
+        uilabel(dlg, 'Position', [20 110 300 25], ...
+               'Text', 'Formula: s = c × log(1 + r)', ...
+               'FontSize', 13, 'FontWeight', 'bold', ...
+               'HorizontalAlignment', 'center', ...
+               'FontColor', [0.2 0.2 0.2]);
+
+        uilabel(dlg, 'Position', [30 65 120 22], 'Text', 'Constant (c):', ...
+               'FontSize', 11, 'FontColor', [0.2 0.2 0.2]);
+        cField = uieditfield(dlg, 'numeric', 'Position', [160 65 150 30], ...
+                            'Value', 1.0, 'FontSize', 11);
+
+        uibutton(dlg, 'Position', [120 15 100 35], 'Text', 'Apply', ...
+                'FontSize', 11, 'FontWeight', 'bold', ...
+                'BackgroundColor', [0.26 0.52 0.96], ...
+                'FontColor', 'white', ...
                 'ButtonPushedFcn', @(~,~)applyLogCallback(cField.Value, dlg));
     end
 
@@ -213,7 +269,6 @@ function ImageProcessingGUI()
         processedImage = log_transformation(currentImage, c);
         displayImage(outputAxes, processedImage);
         displayHistogram(outputHistAxes, processedImage);
-        updateInfo(sprintf('Log transform applied: s = %.2f * log(1 + r)', c));
     end
 
     function applyPowerTransform(~, ~)
@@ -222,14 +277,30 @@ function ImageProcessingGUI()
             return;
         end
 
-        % Create dialog for parameters
-        dlg = uifigure('Name', 'Power Transform Parameters', 'Position', [500 500 300 150]);
-        uilabel(dlg, 'Position', [20 100 100 22], 'Text', 'Constant (c):');
-        cField = uieditfield(dlg, 'numeric', 'Position', [130 100 150 22], 'Value', 1.0);
-        uilabel(dlg, 'Position', [20 60 100 22], 'Text', 'Gamma (γ):');
-        gammaField = uieditfield(dlg, 'numeric', 'Position', [130 60 150 22], 'Value', 2.0);
+        dlg = uifigure('Name', 'Power Transform (Gamma)', ...
+                      'Position', [500 500 340 200], ...
+                      'Color', [0.95 0.95 0.97]);
 
-        uibutton(dlg, 'Position', [100 20 100 30], 'Text', 'Apply', ...
+        uilabel(dlg, 'Position', [20 145 300 25], ...
+               'Text', 'Formula: s = c × r^γ', ...
+               'FontSize', 13, 'FontWeight', 'bold', ...
+               'HorizontalAlignment', 'center', ...
+               'FontColor', [0.2 0.2 0.2]);
+
+        uilabel(dlg, 'Position', [30 100 120 22], 'Text', 'Constant (c):', ...
+               'FontSize', 11, 'FontColor', [0.2 0.2 0.2]);
+        cField = uieditfield(dlg, 'numeric', 'Position', [160 100 150 30], ...
+                            'Value', 1.0, 'FontSize', 11);
+
+        uilabel(dlg, 'Position', [30 60 120 22], 'Text', 'Gamma (γ):', ...
+               'FontSize', 11, 'FontColor', [0.2 0.2 0.2]);
+        gammaField = uieditfield(dlg, 'numeric', 'Position', [160 60 150 30], ...
+                                'Value', 2.0, 'FontSize', 11);
+
+        uibutton(dlg, 'Position', [120 15 100 35], 'Text', 'Apply', ...
+                'FontSize', 11, 'FontWeight', 'bold', ...
+                'BackgroundColor', [0.26 0.52 0.96], ...
+                'FontColor', 'white', ...
                 'ButtonPushedFcn', @(~,~)applyPowerCallback(cField.Value, gammaField.Value, dlg));
     end
 
@@ -238,7 +309,6 @@ function ImageProcessingGUI()
         processedImage = power_transformation(currentImage, c, gamma);
         displayImage(outputAxes, processedImage);
         displayHistogram(outputHistAxes, processedImage);
-        updateInfo(sprintf('Power transform applied: s = %.2f * r^%.2f', c, gamma));
     end
 
     function applyContrastStretching(~, ~)
@@ -250,7 +320,6 @@ function ImageProcessingGUI()
         processedImage = contrast_stretching(currentImage);
         displayImage(outputAxes, processedImage);
         displayHistogram(outputHistAxes, processedImage);
-        updateInfo('Contrast stretching applied (automatic r_min, r_max)');
     end
 
     function applyEqualization(~, ~)
@@ -262,7 +331,6 @@ function ImageProcessingGUI()
         processedImage = histogram_equalization(currentImage);
         displayImage(outputAxes, processedImage);
         displayHistogram(outputHistAxes, processedImage);
-        updateInfo('Histogram equalization applied');
     end
 
     function applyMatching(~, ~)
@@ -276,15 +344,46 @@ function ImageProcessingGUI()
             return;
         end
 
+        % Check if dimensions match
         if ~isequal(size(currentImage), size(referenceImage))
-            uialert(fig, 'Input and reference images must have the same dimensions!', 'Error');
-            return;
+            % Check if cropping is possible
+            [inputH, inputW, ~] = size(currentImage);
+            [refH, refW, ~] = size(referenceImage);
+
+            if refH >= inputH && refW >= inputW
+                % Reference image is larger or equal, can crop
+                selection = uiconfirm(fig, ...
+                    sprintf('Reference image (%dx%d) is larger than input image (%dx%d).\nWould you like to crop the reference image to match?', ...
+                    refW, refH, inputW, inputH), ...
+                    'Image Size Mismatch', ...
+                    'Options', {'Crop Reference', 'Cancel'}, ...
+                    'DefaultOption', 1, 'CancelOption', 2);
+
+                if strcmp(selection, 'Crop Reference')
+                    % Crop reference image from center
+                    startRow = round((refH - inputH) / 2) + 1;
+                    startCol = round((refW - inputW) / 2) + 1;
+                    referenceImage = referenceImage(startRow:startRow+inputH-1, ...
+                                                   startCol:startCol+inputW-1, :);
+
+                    % Update reference display
+                    displayImage(referenceAxes, referenceImage);
+                    displayHistogram(referenceHistAxes, referenceImage);
+                else
+                    return;
+                end
+            else
+                uialert(fig, ...
+                    sprintf('Input and reference images must have the same dimensions!\nInput: %dx%d, Reference: %dx%d\n\nReference image is too small to crop.', ...
+                    inputW, inputH, refW, refH), ...
+                    'Error');
+                return;
+            end
         end
 
         processedImage = histogram_matching(currentImage, referenceImage);
         displayImage(outputAxes, processedImage);
         displayHistogram(outputHistAxes, processedImage);
-        updateInfo('Histogram matching applied');
     end
 
     % Helper functions
@@ -299,40 +398,38 @@ function ImageProcessingGUI()
         cla(ax);
 
         if size(img, 3) == 3
-            % Color image - display RGB histograms
-            colors = {'r', 'g', 'b'};
+            % Color image - display RGB histograms with improved styling
+            colors = {[0.9 0.2 0.2], [0.2 0.8 0.2], [0.2 0.2 0.9]};
             hold(ax, 'on');
             for ch = 1:3
                 hist_vals = calculate_histogram(img(:,:,ch));
-                plot(ax, 0:255, hist_vals, colors{ch}, 'LineWidth', 1.5);
+                plot(ax, 0:255, hist_vals, 'Color', colors{ch}, ...
+                     'LineWidth', 2.5, 'LineStyle', '-');
             end
             hold(ax, 'off');
-            legend(ax, {'Red', 'Green', 'Blue'}, 'Location', 'best');
+            lgd = legend(ax, {'Red Channel', 'Green Channel', 'Blue Channel'}, ...
+                  'Location', 'northeast', 'FontSize', 9);
+            lgd.TextColor = [1 1 1];  % White text for better contrast
+            lgd.Color = [0.2 0.2 0.2];  % Dark background
+            lgd.EdgeColor = [0.4 0.4 0.4];
         else
-            % Grayscale image
+            % Grayscale image with gradient effect
             hist_vals = calculate_histogram(img);
-            bar(ax, 0:255, hist_vals, 'FaceColor', [0.3 0.3 0.3]);
+            b = bar(ax, 0:255, hist_vals, 'FaceColor', [0.26 0.52 0.96], ...
+                   'EdgeColor', 'none', 'FaceAlpha', 0.8);
         end
 
-        ax.XLabel.String = 'Intensity';
-        ax.YLabel.String = 'Frequency';
+        ax.XLabel.String = 'Intensity Level';
+        ax.YLabel.String = 'Pixel Count';
+        ax.FontSize = 9;
         ax.XLim = [0 255];
+        ax.Box = 'on';
+        ax.GridColor = [0.85 0.85 0.85];
+        ax.GridAlpha = 0.3;
+        ax.XColor = [0 0 0];
+        ax.YColor = [0 0 0];
+        ax.XLabel.Color = [0 0 0];
+        ax.YLabel.Color = [0 0 0];
         grid(ax, 'on');
-    end
-
-    function updateInfo(message)
-        timestamp = datestr(now, 'HH:MM:SS');
-        currentText = infoText.Value;
-        newMessage = {[timestamp ' - ' message]};
-
-        % Combine with existing messages
-        if isempty(currentText)
-            newText = newMessage;
-        else
-            newText = [newMessage; currentText];
-        end
-
-        % Keep only last 20 messages
-        infoText.Value = newText(1:min(20, length(newText)));
     end
 end
