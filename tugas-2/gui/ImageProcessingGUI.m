@@ -306,61 +306,217 @@ function applyConvolutionTask1(parent, maskType, maskSize, sigmaParam, paddingMe
 end
 
 function loadTestImageTask1(parent)
-    % Load test images from task1 folder
+    % Batch process all test images from task1 folder
     task1Path = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task1', 'test_images');
 
-    % Get list of test images
-    imageFiles = dir(fullfile(task1Path, '*.jpeg'));
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task1Path, '*.jpg'));
-    end
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task1Path, '*.png'));
-    end
+    % Get list of ALL test images (all supported formats)
+    imageFiles = [dir(fullfile(task1Path, '*.jpg'));
+                  dir(fullfile(task1Path, '*.jpeg'));
+                  dir(fullfile(task1Path, '*.png'));
+                  dir(fullfile(task1Path, '*.bmp'));
+                  dir(fullfile(task1Path, '*.tif'))];
 
     if isempty(imageFiles)
         uialert(ancestor(parent, 'figure'), 'No test images found in task1/test_images folder!', 'Error');
         return;
     end
 
-    % Create selection dialog
-    imageNames = {imageFiles.name};
-    [idx, tf] = listdlg('ListString', imageNames, 'SelectionMode', 'single', ...
-                       'Name', 'Select Test Image', 'PromptString', 'Choose a test image:');
+    % Create output folder
+    outputPath = fullfile(task1Path, 'batch_results');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
+    end
 
-    if tf
-        selectedFile = imageNames{idx};
+    % Add path to task1 folder
+    task1FuncPath = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task1');
+    addpath(task1FuncPath);
+
+    % Find UI controls to get current settings
+    controlPanel = findobj(parent, 'Type', 'uipanel', 'Title', 'Controls');
+    allDropdowns = findobj(controlPanel, 'Type', 'uidropdown');
+    allSpinners = findobj(controlPanel, 'Type', 'uispinner');
+
+    % Get current settings (default if not found)
+    maskTypeValue = 'Gaussian';
+    maskSizeValue = '5x5';
+    sigmaValue = 1.0;
+    paddingValue = 'replicate';
+
+    for i = 1:length(allDropdowns)
+        pos = allDropdowns(i).Position;
+        if pos(2) == 420  % Mask Type dropdown position
+            maskTypeValue = allDropdowns(i).Value;
+        elseif pos(2) == 360  % Mask Size dropdown position
+            maskSizeValue = allDropdowns(i).Value;
+        elseif pos(2) == 270  % Padding Method dropdown position
+            paddingValue = allDropdowns(i).Value;
+        end
+    end
+
+    if ~isempty(allSpinners)
+        sigmaValue = allSpinners(1).Value;
+    end
+
+    % Parse mask size
+    switch maskSizeValue
+        case '3x3'
+            n = 3;
+        case '5x5'
+            n = 5;
+        case '7x7'
+            n = 7;
+    end
+
+    % Create progress dialog
+    fig = ancestor(parent, 'figure');
+    dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                        'Message', 'Processing test images...', ...
+                        'Cancelable', true);
+
+    % Process each image
+    totalImages = length(imageFiles);
+    for idx = 1:totalImages
+        if dlg.CancelRequested
+            break;
+        end
+
+        selectedFile = imageFiles(idx).name;
+        dlg.Value = idx / totalImages;
+        dlg.Message = sprintf('Processing %s (%d/%d)...', selectedFile, idx, totalImages);
+
+        % Load image
         img = imread(fullfile(task1Path, selectedFile));
-
-        % Store in parent data
         parent.UserData.originalImage = img;
-        parent.UserData.customResult = [];
-        parent.UserData.matlabResult = [];
 
-        % Display
+        % Display original
         ax = findobj(parent, 'Tag', 'OriginalAxes');
         imshow(img, 'Parent', ax);
-        title(ax, 'Original Image');
+        title(ax, sprintf('Original: %s', selectedFile));
 
-        % Clear other axes
-        ax2 = findobj(parent, 'Tag', 'CustomAxes');
-        cla(ax2);
-        title(ax2, 'Custom Convolution');
+        try
+            % Create mask based on type
+            switch maskTypeValue
+                case 'Average'
+                    mask = createMask('average', n);
+                case 'Gaussian'
+                    mask = createMask('gaussian', n, sigmaValue);
+                case 'Sobel X'
+                    if n ~= 3
+                        continue;  % Skip if incompatible size
+                    end
+                    mask = createMask('sobel_x', n);
+                case 'Sobel Y'
+                    if n ~= 3
+                        continue;  % Skip if incompatible size
+                    end
+                    mask = createMask('sobel_y', n);
+                case 'Laplacian'
+                    mask = createMask('laplacian', n);
+            end
 
-        ax3 = findobj(parent, 'Tag', 'MatlabAxes');
-        cla(ax3);
-        title(ax3, 'MATLAB Built-in');
+            % Apply custom convolution
+            customResult = applyConvolution(img, mask, paddingValue);
 
-        ax4 = findobj(parent, 'Tag', 'DifferenceAxes');
-        cla(ax4);
-        title(ax4, 'Difference (10x)');
+            % Apply MATLAB built-in
+            if strcmp(paddingValue, 'zero')
+                matlabPadding = 0;
+            else
+                matlabPadding = paddingValue;
+            end
 
-        % Update info
-        infoText = findobj(parent, 'Tag', 'InfoText');
-        infoText.Value = {sprintf('Test image loaded: %s', selectedFile), ...
-                         sprintf('Size: %d x %d', size(img, 1), size(img, 2)), ...
-                         sprintf('Channels: %d', size(img, 3))};
+            if size(img, 3) == 1
+                matlabResult = imfilter(double(img), mask, matlabPadding, 'conv');
+                matlabResult = uint8(matlabResult);
+            else
+                matlabResult = imfilter(img, mask, matlabPadding, 'conv');
+            end
+
+            % Display results
+            ax2 = findobj(parent, 'Tag', 'CustomAxes');
+            imshow(customResult, 'Parent', ax2);
+            title(ax2, 'Custom Convolution');
+
+            ax3 = findobj(parent, 'Tag', 'MatlabAxes');
+            imshow(matlabResult, 'Parent', ax3);
+            title(ax3, 'MATLAB Built-in');
+
+            % Calculate and display difference
+            difference = abs(double(customResult) - double(matlabResult));
+            ax4 = findobj(parent, 'Tag', 'DifferenceAxes');
+            imshow(uint8(difference*10), 'Parent', ax4);
+            title(ax4, 'Difference (10x)');
+
+            % Save results
+            [~, name, ~] = fileparts(selectedFile);
+            imwrite(customResult, fullfile(outputPath, sprintf('%s_custom.png', name)));
+            imwrite(matlabResult, fullfile(outputPath, sprintf('%s_matlab.png', name)));
+            imwrite(uint8(difference*10), fullfile(outputPath, sprintf('%s_diff.png', name)));
+
+            % Update info
+            infoText = findobj(parent, 'Tag', 'InfoText');
+            mseVal = mean(difference(:).^2);
+            infoText.Value = {sprintf('Processed: %s (%d/%d)', selectedFile, idx, totalImages), ...
+                             sprintf('Size: %d x %d', size(img, 1), size(img, 2)), ...
+                             sprintf('MSE: %.6f', mseVal), ...
+                             sprintf('Results saved to: batch_results/')};
+
+            drawnow;
+
+            % Pause for screenshot - close progress dialog first for clear view
+            if idx < totalImages
+                close(dlg);  % Close progress dialog so results are visible
+
+                % Create separate non-modal window for confirmation
+                confirmFig = uifigure('Name', 'Batch Processing', ...
+                                     'Position', [100, 100, 400, 150], ...
+                                     'WindowStyle', 'normal');
+
+                uilabel(confirmFig, 'Position', [20, 80, 360, 40], ...
+                       'Text', sprintf('Image %d/%d processed. Take screenshot if needed.', idx, totalImages), ...
+                       'FontSize', 14, ...
+                       'HorizontalAlignment', 'center');
+
+                continueBtn = uibutton(confirmFig, 'Position', [50, 20, 130, 40], ...
+                                      'Text', 'Continue', ...
+                                      'FontSize', 12);
+
+                skipBtn = uibutton(confirmFig, 'Position', [220, 20, 130, 40], ...
+                                  'Text', 'Skip Remaining', ...
+                                  'FontSize', 12);
+
+                % Wait for user response
+                userChoice = 'Continue';
+                continueBtn.ButtonPushedFcn = @(~,~) close(confirmFig);
+                skipBtn.ButtonPushedFcn = @(~,~) assignin('base', 'tempUserChoice', 'Skip');
+
+                % Wait for window to close
+                uiwait(confirmFig);
+
+                % Check if user clicked skip
+                if evalin('base', 'exist(''tempUserChoice'', ''var'')')
+                    userChoice = evalin('base', 'tempUserChoice');
+                    evalin('base', 'clear tempUserChoice');
+                end
+
+                if strcmp(userChoice, 'Skip')
+                    break;
+                end
+
+                % Recreate progress dialog for next iteration
+                dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                                    'Message', 'Processing test images...', ...
+                                    'Cancelable', true);
+            end
+
+        catch ME
+            % Continue on error
+            warning('Error processing %s: %s', selectedFile, ME.message);
+        end
     end
+
+    close(dlg);
+    uialert(fig, sprintf('Batch processing complete!\n%d images processed.\nResults saved to: %s', ...
+                         idx, outputPath), 'Success');
 end
 
 function clearAllTask1(parent)
@@ -753,56 +909,216 @@ function applyFilterTask2(parent, domainType, spatialFilterType, freqFilterType,
 end
 
 function loadTestImageTask2(parent)
-    % Load test images from task2 folder
+    % Batch process all test images from task2 folder
     task2Path = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task2', 'test_images');
 
-    % Get list of test images
-    imageFiles = dir(fullfile(task2Path, '*.jpg'));
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task2Path, '*.jpeg'));
-    end
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task2Path, '*.png'));
-    end
+    % Get list of ALL test images (all supported formats)
+    imageFiles = [dir(fullfile(task2Path, '*.jpg'));
+                  dir(fullfile(task2Path, '*.jpeg'));
+                  dir(fullfile(task2Path, '*.png'));
+                  dir(fullfile(task2Path, '*.bmp'));
+                  dir(fullfile(task2Path, '*.tif'))];
 
     if isempty(imageFiles)
         uialert(ancestor(parent, 'figure'), 'No test images found in task2/test_images folder!', 'Error');
         return;
     end
 
-    % Create selection dialog
-    imageNames = {imageFiles.name};
-    [idx, tf] = listdlg('ListString', imageNames, 'SelectionMode', 'single', ...
-                       'Name', 'Select Test Image', 'PromptString', 'Choose a test image:');
-
-    if tf
-        selectedFile = imageNames{idx};
-        img = imread(fullfile(task2Path, selectedFile));
-
-        % Store in parent data
-        parent.UserData.originalImage = img;
-        parent.UserData.noisyImage = [];
-        parent.UserData.smoothedImage = [];
-
-        % Display
-        ax = findobj(parent, 'Tag', 'OriginalAxes');
-        imshow(img, 'Parent', ax);
-        title(ax, 'Original Image');
-
-        % Clear other axes
-        ax2 = findobj(parent, 'Tag', 'NoisyAxes');
-        cla(ax2);
-        title(ax2, 'Noisy Image');
-
-        ax3 = findobj(parent, 'Tag', 'FilteredAxes');
-        cla(ax3);
-        title(ax3, 'Filtered Image');
-
-        % Update info
-        infoText = findobj(parent, 'Tag', 'InfoText');
-        infoText.Value = {sprintf('Test image loaded: %s', selectedFile), ...
-                         sprintf('Size: %d x %d', size(img, 1), size(img, 2))};
+    % Create output folder
+    outputPath = fullfile(task2Path, 'batch_results');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
     end
+
+    % Add path to task2 folder
+    task2FuncPath = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task2');
+    addpath(task2FuncPath);
+
+    % Find UI controls to get current settings
+    controlPanel = findobj(parent, 'Type', 'uipanel', 'Title', 'Controls');
+    allDropdowns = findobj(controlPanel, 'Type', 'uidropdown');
+    allSpinners = findobj(controlPanel, 'Type', 'uispinner');
+
+    % Default settings
+    noiseTypeValue = 'Gaussian';
+    noiseParamValue = 0.01;
+    domainTypeValue = 'Spatial';
+    spatialFilterTypeValue = 'Gaussian';
+    freqFilterTypeValue = 'GLPF';
+    filterSizeValue = 5;
+    sigmaValue = 1.0;
+    cutoffFreqValue = 30;
+    filterOrderValue = 2;
+
+    % Get current settings from UI controls
+    for i = 1:length(allDropdowns)
+        pos = allDropdowns(i).Position;
+        % Match by position to identify controls
+        if abs(pos(2) - 555) < 5  % Noise type
+            noiseTypeValue = allDropdowns(i).Value;
+        elseif abs(pos(2) - 495) < 5  % Domain type
+            domainTypeValue = allDropdowns(i).Value;
+        elseif abs(pos(2) - 435) < 5  % Spatial filter type
+            spatialFilterTypeValue = allDropdowns(i).Value;
+        elseif abs(pos(2) - 405) < 5  % Frequency filter type
+            freqFilterTypeValue = allDropdowns(i).Value;
+        elseif abs(pos(2) - 375) < 5  % Filter size
+            filterSizeValue = allDropdowns(i).Value;
+        end
+    end
+
+    % Get spinner values
+    for i = 1:length(allSpinners)
+        pos = allSpinners(i).Position;
+        if abs(pos(2) - 525) < 5  % Noise parameter
+            noiseParamValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 345) < 5  % Sigma
+            sigmaValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 315) < 5  % Cutoff frequency
+            cutoffFreqValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 285) < 5  % Filter order
+            filterOrderValue = allSpinners(i).Value;
+        end
+    end
+
+    % Create progress dialog
+    fig = ancestor(parent, 'figure');
+    dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                        'Message', 'Processing test images...', ...
+                        'Cancelable', true);
+
+    % Process each image
+    totalImages = length(imageFiles);
+    for idx = 1:totalImages
+        if dlg.CancelRequested
+            break;
+        end
+
+        selectedFile = imageFiles(idx).name;
+        dlg.Value = idx / totalImages;
+        dlg.Message = sprintf('Processing %s (%d/%d)...', selectedFile, idx, totalImages);
+
+        try
+            % Load image
+            img = imread(fullfile(task2Path, selectedFile));
+            parent.UserData.originalImage = img;
+
+            % Display original
+            ax1 = findobj(parent, 'Tag', 'OriginalAxes');
+            imshow(img, 'Parent', ax1);
+            title(ax1, sprintf('Original: %s', selectedFile));
+
+            % Add noise
+            switch noiseTypeValue
+                case 'Gaussian'
+                    noisyImg = addNoise(img, 'gaussian', 0, noiseParamValue);
+                case 'Salt & Pepper'
+                    noisyImg = addNoise(img, 'salt_pepper', noiseParamValue);
+                case 'Speckle'
+                    noisyImg = addNoise(img, 'speckle', noiseParamValue);
+            end
+            parent.UserData.noisyImage = noisyImg;
+
+            % Display noisy
+            ax2 = findobj(parent, 'Tag', 'NoisyAxes');
+            imshow(noisyImg, 'Parent', ax2);
+            title(ax2, sprintf('Noisy (%s)', noiseTypeValue));
+
+            % Apply filter
+            if strcmp(domainTypeValue, 'Spatial')
+                switch spatialFilterTypeValue
+                    case 'Mean'
+                        [smoothedImg, ~] = meanFilter(noisyImg, filterSizeValue);
+                    case 'Gaussian'
+                        [smoothedImg, ~] = gaussianFilter(noisyImg, filterSizeValue, sigmaValue);
+                end
+            else
+                % Frequency domain
+                usePadding = true;
+                switch freqFilterTypeValue
+                    case 'ILPF'
+                        [smoothedImg, ~, ~] = ilpf(noisyImg, cutoffFreqValue, usePadding);
+                    case 'GLPF'
+                        [smoothedImg, ~, ~] = glpf(noisyImg, cutoffFreqValue, usePadding);
+                    case 'BLPF'
+                        [smoothedImg, ~, ~] = blpf(noisyImg, cutoffFreqValue, filterOrderValue, usePadding);
+                end
+            end
+            parent.UserData.smoothedImage = smoothedImg;
+
+            % Display filtered
+            ax3 = findobj(parent, 'Tag', 'FilteredAxes');
+            imshow(smoothedImg, 'Parent', ax3);
+            title(ax3, sprintf('Filtered (%s)', domainTypeValue));
+
+            % Save results
+            [~, name, ~] = fileparts(selectedFile);
+            imwrite(noisyImg, fullfile(outputPath, sprintf('%s_noisy.png', name)));
+            imwrite(smoothedImg, fullfile(outputPath, sprintf('%s_filtered.png', name)));
+
+            % Update info
+            infoText = findobj(parent, 'Tag', 'InfoText');
+            infoText.Value = {sprintf('Processed: %s (%d/%d)', selectedFile, idx, totalImages), ...
+                             sprintf('Noise: %s (%.3f)', noiseTypeValue, noiseParamValue), ...
+                             sprintf('Filter: %s domain', domainTypeValue), ...
+                             sprintf('Results saved to: batch_results/')};
+
+            drawnow;
+
+            % Pause for screenshot - close progress dialog first for clear view
+            if idx < totalImages
+                close(dlg);  % Close progress dialog so results are visible
+
+                % Create separate non-modal window for confirmation
+                confirmFig = uifigure('Name', 'Batch Processing', ...
+                                     'Position', [100, 100, 400, 150], ...
+                                     'WindowStyle', 'normal');
+
+                uilabel(confirmFig, 'Position', [20, 80, 360, 40], ...
+                       'Text', sprintf('Image %d/%d processed. Take screenshot if needed.', idx, totalImages), ...
+                       'FontSize', 14, ...
+                       'HorizontalAlignment', 'center');
+
+                continueBtn = uibutton(confirmFig, 'Position', [50, 20, 130, 40], ...
+                                      'Text', 'Continue', ...
+                                      'FontSize', 12);
+
+                skipBtn = uibutton(confirmFig, 'Position', [220, 20, 130, 40], ...
+                                  'Text', 'Skip Remaining', ...
+                                  'FontSize', 12);
+
+                % Wait for user response
+                userChoice = 'Continue';
+                continueBtn.ButtonPushedFcn = @(~,~) close(confirmFig);
+                skipBtn.ButtonPushedFcn = @(~,~) assignin('base', 'tempUserChoice', 'Skip');
+
+                % Wait for window to close
+                uiwait(confirmFig);
+
+                % Check if user clicked skip
+                if evalin('base', 'exist(''tempUserChoice'', ''var'')')
+                    userChoice = evalin('base', 'tempUserChoice');
+                    evalin('base', 'clear tempUserChoice');
+                end
+
+                if strcmp(userChoice, 'Skip')
+                    break;
+                end
+
+                % Recreate progress dialog for next iteration
+                dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                                    'Message', 'Processing test images...', ...
+                                    'Cancelable', true);
+            end
+
+        catch ME
+            warning('Error processing %s: %s', selectedFile, ME.message);
+        end
+    end
+
+    close(dlg);
+    uialert(fig, sprintf('Batch processing complete!\n%d images processed.\nResults saved to: %s', ...
+                         idx, outputPath), 'Success');
 end
 
 function updateDomainVisibility(parent, domainDropdown)
@@ -1100,7 +1416,209 @@ function applyFilterTask3(parent, filterType, cutoffFreq, filterOrder, boostFact
 end
 
 function loadTestImageTask3(parent)
-    % Load test images - use MATLAB built-in images or task2 images since task3 doesn't have dedicated test images
+    % Batch process all test images from task3 folder
+    task3Path = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task3', 'test_images');
+
+    % Get list of ALL test images (all supported formats)
+    imageFiles = [dir(fullfile(task3Path, '*.jpg'));
+                  dir(fullfile(task3Path, '*.jpeg'));
+                  dir(fullfile(task3Path, '*.png'));
+                  dir(fullfile(task3Path, '*.bmp'));
+                  dir(fullfile(task3Path, '*.tif'))];
+
+    if isempty(imageFiles)
+        uialert(ancestor(parent, 'figure'), 'No test images found in task3/test_images folder!', 'Error');
+        return;
+    end
+
+    % Create output folder
+    outputPath = fullfile(task3Path, 'batch_results');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
+    end
+
+    % Add path to task3 folder
+    task3FuncPath = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task3');
+    addpath(task3FuncPath);
+
+    % Find UI controls to get current settings
+    controlPanel = findobj(parent, 'Type', 'uipanel', 'Title', 'Controls');
+    allDropdowns = findobj(controlPanel, 'Type', 'uidropdown');
+    allSpinners = findobj(controlPanel, 'Type', 'uispinner');
+
+    % Default settings
+    filterTypeValue = 'GHPF';
+    cutoffFreqValue = 30;
+    filterOrderValue = 2;
+    boostFactorValue = 1.0;
+    processingTypeValue = 'High-Pass Filter';
+
+    % Get current settings from UI controls
+    for i = 1:length(allDropdowns)
+        pos = allDropdowns(i).Position;
+        if abs(pos(2) - 525) < 5  % Filter type
+            filterTypeValue = allDropdowns(i).Value;
+        elseif abs(pos(2) - 465) < 5  % Processing type
+            processingTypeValue = allDropdowns(i).Value;
+        end
+    end
+
+    for i = 1:length(allSpinners)
+        pos = allSpinners(i).Position;
+        if abs(pos(2) - 495) < 5  % Cutoff frequency
+            cutoffFreqValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 435) < 5  % Filter order
+            filterOrderValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 405) < 5  % Boost factor
+            boostFactorValue = allSpinners(i).Value;
+        end
+    end
+
+    % Create progress dialog
+    fig = ancestor(parent, 'figure');
+    dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                        'Message', 'Processing test images...', ...
+                        'Cancelable', true);
+
+    % Process each image
+    totalImages = length(imageFiles);
+    for idx = 1:totalImages
+        if dlg.CancelRequested
+            break;
+        end
+
+        selectedFile = imageFiles(idx).name;
+        dlg.Value = idx / totalImages;
+        dlg.Message = sprintf('Processing %s (%d/%d)...', selectedFile, idx, totalImages);
+
+        try
+            % Load image
+            img = imread(fullfile(task3Path, selectedFile));
+            parent.UserData.originalImage = img;
+
+            % Display original
+            ax1 = findobj(parent, 'Tag', 'OriginalAxes');
+            imshow(img, 'Parent', ax1);
+            title(ax1, sprintf('Original: %s', selectedFile));
+
+            % Apply high-pass filter
+            usePadding = true;
+            switch filterTypeValue
+                case 'IHPF'
+                    [filteredImg, filterUsed, spectrum] = ihpf(img, cutoffFreqValue, usePadding);
+                case 'GHPF'
+                    [filteredImg, filterUsed, spectrum] = ghpf(img, cutoffFreqValue, usePadding);
+                case 'BHPF'
+                    [filteredImg, filterUsed, spectrum] = bhpf(img, cutoffFreqValue, filterOrderValue, usePadding);
+            end
+
+            % Apply boost factor
+            if boostFactorValue ~= 1.0
+                filteredImg = im2uint8(mat2gray(im2double(filteredImg) * boostFactorValue));
+            end
+            parent.UserData.filteredImage = filteredImg;
+
+            % Process based on type
+            switch processingTypeValue
+                case 'High-Pass Filter'
+                    resultImg = filteredImg;
+                case 'Sharpening'
+                    resultImg = im2double(img) + im2double(filteredImg);
+                    resultImg = im2uint8(mat2gray(resultImg));
+                case 'Edge Detection'
+                    resultImg = filteredImg;
+            end
+
+            % Display results
+            ax2 = findobj(parent, 'Tag', 'FilteredAxes');
+            imshow(filteredImg, 'Parent', ax2);
+            title(ax2, sprintf('High-Pass (%s)', filterTypeValue));
+
+            ax3 = findobj(parent, 'Tag', 'ResultAxes');
+            imshow(resultImg, 'Parent', ax3);
+            title(ax3, processingTypeValue);
+
+            ax4 = findobj(parent, 'Tag', 'SpectrumAxes');
+            imshow(spectrum.filtered, [], 'Parent', ax4);
+            title(ax4, 'Filtered Spectrum');
+
+            ax5 = findobj(parent, 'Tag', 'FilterAxes');
+            imshow(filterUsed, [], 'Parent', ax5);
+            title(ax5, sprintf('%s Filter', filterTypeValue));
+
+            % Save results
+            [~, name, ~] = fileparts(selectedFile);
+            imwrite(filteredImg, fullfile(outputPath, sprintf('%s_filtered.png', name)));
+            imwrite(resultImg, fullfile(outputPath, sprintf('%s_result.png', name)));
+            imwrite(uint8(255 * mat2gray(filterUsed)), fullfile(outputPath, sprintf('%s_filter.png', name)));
+
+            % Update info
+            infoText = findobj(parent, 'Tag', 'InfoText');
+            infoText.Value = {sprintf('Processed: %s (%d/%d)', selectedFile, idx, totalImages), ...
+                             sprintf('Filter: %s (D0=%d)', filterTypeValue, cutoffFreqValue), ...
+                             sprintf('Processing: %s', processingTypeValue), ...
+                             sprintf('Results saved to: batch_results/')};
+
+            drawnow;
+
+            % Pause for screenshot - close progress dialog first for clear view
+            if idx < totalImages
+                close(dlg);  % Close progress dialog so results are visible
+
+                % Create separate non-modal window for confirmation
+                confirmFig = uifigure('Name', 'Batch Processing', ...
+                                     'Position', [100, 100, 400, 150], ...
+                                     'WindowStyle', 'normal');
+
+                uilabel(confirmFig, 'Position', [20, 80, 360, 40], ...
+                       'Text', sprintf('Image %d/%d processed. Take screenshot if needed.', idx, totalImages), ...
+                       'FontSize', 14, ...
+                       'HorizontalAlignment', 'center');
+
+                continueBtn = uibutton(confirmFig, 'Position', [50, 20, 130, 40], ...
+                                      'Text', 'Continue', ...
+                                      'FontSize', 12);
+
+                skipBtn = uibutton(confirmFig, 'Position', [220, 20, 130, 40], ...
+                                  'Text', 'Skip Remaining', ...
+                                  'FontSize', 12);
+
+                % Wait for user response
+                userChoice = 'Continue';
+                continueBtn.ButtonPushedFcn = @(~,~) close(confirmFig);
+                skipBtn.ButtonPushedFcn = @(~,~) assignin('base', 'tempUserChoice', 'Skip');
+
+                % Wait for window to close
+                uiwait(confirmFig);
+
+                % Check if user clicked skip
+                if evalin('base', 'exist(''tempUserChoice'', ''var'')')
+                    userChoice = evalin('base', 'tempUserChoice');
+                    evalin('base', 'clear tempUserChoice');
+                end
+
+                if strcmp(userChoice, 'Skip')
+                    break;
+                end
+
+                % Recreate progress dialog for next iteration
+                dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                                    'Message', 'Processing test images...', ...
+                                    'Cancelable', true);
+            end
+
+        catch ME
+            warning('Error processing %s: %s', selectedFile, ME.message);
+        end
+    end
+
+    close(dlg);
+    uialert(fig, sprintf('Batch processing complete!\n%d images processed.\nResults saved to: %s', ...
+                         idx, outputPath), 'Success');
+end
+
+function loadTestImageTask3_OLD(parent)
+    % OLD VERSION - Load test images - use MATLAB built-in images or task2 images since task3 doesn't have dedicated test images
     testImages = {'cameraman.tif', 'coins.png', 'rice.png', 'eight.tif', 'moon.tif'};
 
     [idx, tf] = listdlg('ListString', testImages, 'SelectionMode', 'single', ...
@@ -1512,64 +2030,188 @@ function setPresetTask4(gammaL, gammaH, slopeC, cutoffD0, presetType)
 end
 
 function loadTestImageTask4(parent)
-    % Load test images from task4 folder
+    % Batch process all test images from task4 folder
     task4Path = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task4', 'test_images');
 
-    % Get list of test images
-    imageFiles = dir(fullfile(task4Path, '*.jpg'));
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task4Path, '*.jpeg'));
-    end
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task4Path, '*.png'));
-    end
+    % Get list of ALL test images (all supported formats)
+    imageFiles = [dir(fullfile(task4Path, '*.jpg'));
+                  dir(fullfile(task4Path, '*.jpeg'));
+                  dir(fullfile(task4Path, '*.png'));
+                  dir(fullfile(task4Path, '*.bmp'));
+                  dir(fullfile(task4Path, '*.tif'))];
 
     if isempty(imageFiles)
         uialert(ancestor(parent, 'figure'), 'No test images found in task4/test_images folder!', 'Error');
         return;
     end
 
-    % Create selection dialog
-    imageNames = {imageFiles.name};
-    [idx, tf] = listdlg('ListString', imageNames, 'SelectionMode', 'single', ...
-                       'Name', 'Select Test Image', 'PromptString', 'Choose a test image:');
-
-    if tf
-        selectedFile = imageNames{idx};
-        img = imread(fullfile(task4Path, selectedFile));
-
-        % Store in parent data
-        parent.UserData.originalImage = img;
-        parent.UserData.enhancedImage = [];
-
-        % Display
-        ax = findobj(parent, 'Tag', 'OriginalAxes');
-        imshow(img, 'Parent', ax);
-        title(ax, 'Original Image');
-
-        % Clear other axes
-        ax2 = findobj(parent, 'Tag', 'EnhancedAxes');
-        cla(ax2);
-        title(ax2, 'Enhanced Image');
-
-        ax3 = findobj(parent, 'Tag', 'DifferenceAxes');
-        cla(ax3);
-        title(ax3, 'Difference');
-
-        ax4 = findobj(parent, 'Tag', 'SpectrumAxes');
-        cla(ax4);
-        title(ax4, 'Log Spectrum');
-
-        ax5 = findobj(parent, 'Tag', 'FilterAxes');
-        cla(ax5);
-        title(ax5, 'Homomorphic Filter');
-
-        % Update info
-        infoText = findobj(parent, 'Tag', 'InfoText');
-        infoText.Value = {sprintf('Test image loaded: %s', selectedFile), ...
-                         sprintf('Size: %d x %d', size(img, 1), size(img, 2)), ...
-                         sprintf('Type: %s', ternary(size(img, 3) == 3, 'Color (RGB)', 'Grayscale'))};
+    % Create output folder
+    outputPath = fullfile(task4Path, 'batch_results');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
     end
+
+    % Add path to task4 folder
+    task4FuncPath = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task4');
+    addpath(task4FuncPath);
+
+    % Find UI controls to get current settings
+    controlPanel = findobj(parent, 'Type', 'uipanel', 'Title', 'Controls');
+    allDropdowns = findobj(controlPanel, 'Type', 'uidropdown');
+    allSpinners = findobj(controlPanel, 'Type', 'uispinner');
+
+    % Default settings
+    gammaLValue = 0.5;
+    gammaHValue = 1.5;
+    slopeCValue = 2.0;
+    cutoffD0Value = 30;
+    enhancementTypeValue = 'Standard';
+
+    % Get current settings from UI controls
+    for i = 1:length(allDropdowns)
+        pos = allDropdowns(i).Position;
+        if abs(pos(2) - 480) < 5  % Enhancement type
+            enhancementTypeValue = allDropdowns(i).Value;
+        end
+    end
+
+    for i = 1:length(allSpinners)
+        pos = allSpinners(i).Position;
+        if abs(pos(2) - 550) < 5  % Gamma L
+            gammaLValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 520) < 5  % Gamma H
+            gammaHValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 450) < 5  % Slope C
+            slopeCValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 420) < 5  % Cutoff D0
+            cutoffD0Value = allSpinners(i).Value;
+        end
+    end
+
+    % Create progress dialog
+    fig = ancestor(parent, 'figure');
+    dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                        'Message', 'Processing test images...', ...
+                        'Cancelable', true);
+
+    % Process each image
+    totalImages = length(imageFiles);
+    for idx = 1:totalImages
+        if dlg.CancelRequested
+            break;
+        end
+
+        selectedFile = imageFiles(idx).name;
+        dlg.Value = idx / totalImages;
+        dlg.Message = sprintf('Processing %s (%d/%d)...', selectedFile, idx, totalImages);
+
+        try
+            % Load image
+            img = imread(fullfile(task4Path, selectedFile));
+            parent.UserData.originalImage = img;
+
+            % Display original
+            ax1 = findobj(parent, 'Tag', 'OriginalAxes');
+            imshow(img, 'Parent', ax1);
+            title(ax1, sprintf('Original: %s', selectedFile));
+
+            % Apply homomorphic filter
+            [enhancedImg, spectrum] = homomorphicFilter(img, gammaLValue, gammaHValue, slopeCValue, cutoffD0Value);
+            parent.UserData.enhancedImage = enhancedImg;
+
+            % Process based on enhancement type
+            switch enhancementTypeValue
+                case 'Brighten Only'
+                    resultImg = enhancedImg;
+                case 'Contrast Boost'
+                    resultImg = imadjust(enhancedImg, stretchlim(enhancedImg), []);
+                otherwise
+                    resultImg = enhancedImg;
+            end
+
+            % Display results
+            ax2 = findobj(parent, 'Tag', 'EnhancedAxes');
+            imshow(resultImg, 'Parent', ax2);
+            title(ax2, enhancementTypeValue);
+
+            % Calculate and display difference
+            if size(img, 3) == 1
+                diffImg = uint8(abs(double(resultImg) - double(img)));
+            else
+                diffImg = uint8(sum(abs(double(resultImg) - double(img)), 3) / 3);
+            end
+
+            ax3 = findobj(parent, 'Tag', 'DifferenceAxes');
+            imshow(diffImg, 'Parent', ax3);
+            title(ax3, 'Difference');
+
+            % Save results
+            [~, name, ~] = fileparts(selectedFile);
+            imwrite(resultImg, fullfile(outputPath, sprintf('%s_enhanced.png', name)));
+            imwrite(diffImg, fullfile(outputPath, sprintf('%s_diff.png', name)));
+
+            % Update info
+            infoText = findobj(parent, 'Tag', 'InfoText');
+            infoText.Value = {sprintf('Processed: %s (%d/%d)', selectedFile, idx, totalImages), ...
+                             sprintf('Enhancement: %s', enhancementTypeValue), ...
+                             sprintf('Results saved to: batch_results/')};
+
+            drawnow;
+
+            % Pause for screenshot - close progress dialog first for clear view
+            if idx < totalImages
+                close(dlg);  % Close progress dialog so results are visible
+
+                % Create separate non-modal window for confirmation
+                confirmFig = uifigure('Name', 'Batch Processing', ...
+                                     'Position', [100, 100, 400, 150], ...
+                                     'WindowStyle', 'normal');
+
+                uilabel(confirmFig, 'Position', [20, 80, 360, 40], ...
+                       'Text', sprintf('Image %d/%d processed. Take screenshot if needed.', idx, totalImages), ...
+                       'FontSize', 14, ...
+                       'HorizontalAlignment', 'center');
+
+                continueBtn = uibutton(confirmFig, 'Position', [50, 20, 130, 40], ...
+                                      'Text', 'Continue', ...
+                                      'FontSize', 12);
+
+                skipBtn = uibutton(confirmFig, 'Position', [220, 20, 130, 40], ...
+                                  'Text', 'Skip Remaining', ...
+                                  'FontSize', 12);
+
+                % Wait for user response
+                userChoice = 'Continue';
+                continueBtn.ButtonPushedFcn = @(~,~) close(confirmFig);
+                skipBtn.ButtonPushedFcn = @(~,~) assignin('base', 'tempUserChoice', 'Skip');
+
+                % Wait for window to close
+                uiwait(confirmFig);
+
+                % Check if user clicked skip
+                if evalin('base', 'exist(''tempUserChoice'', ''var'')')
+                    userChoice = evalin('base', 'tempUserChoice');
+                    evalin('base', 'clear tempUserChoice');
+                end
+
+                if strcmp(userChoice, 'Skip')
+                    break;
+                end
+
+                % Recreate progress dialog for next iteration
+                dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                                    'Message', 'Processing test images...', ...
+                                    'Cancelable', true);
+            end
+
+        catch ME
+            warning('Error processing %s: %s', selectedFile, ME.message);
+        end
+    end
+
+    close(dlg);
+    uialert(fig, sprintf('Batch processing complete!\n%d images processed.\nResults saved to: %s', ...
+                         idx, outputPath), 'Success');
 end
 
 function clearAllTask4(parent)
@@ -2046,56 +2688,207 @@ function applyFilterTask5(parent, filterType, filterSize, qParam, dParam)
 end
 
 function loadTestImageTask5(parent)
-    % Load test images from task5 folder
+    % Batch process all test images from task5 folder
     task5Path = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task5', 'test_images');
 
-    % Get list of test images
-    imageFiles = dir(fullfile(task5Path, '*.jpg'));
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task5Path, '*.jpeg'));
-    end
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task5Path, '*.png'));
-    end
+    % Get list of ALL test images (all supported formats)
+    imageFiles = [dir(fullfile(task5Path, '*.jpg'));
+                  dir(fullfile(task5Path, '*.jpeg'));
+                  dir(fullfile(task5Path, '*.png'));
+                  dir(fullfile(task5Path, '*.bmp'));
+                  dir(fullfile(task5Path, '*.tif'))];
 
     if isempty(imageFiles)
         uialert(ancestor(parent, 'figure'), 'No test images found in task5/test_images folder!', 'Error');
         return;
     end
 
-    % Create selection dialog
-    imageNames = {imageFiles.name};
-    [idx, tf] = listdlg('ListString', imageNames, 'SelectionMode', 'single', ...
-                       'Name', 'Select Test Image', 'PromptString', 'Choose a test image:');
-
-    if tf
-        selectedFile = imageNames{idx};
-        img = imread(fullfile(task5Path, selectedFile));
-
-        % Store in parent data
-        parent.UserData.originalImage = img;
-        parent.UserData.noisyImage = [];
-        parent.UserData.filteredImage = [];
-
-        % Display
-        ax = findobj(parent, 'Tag', 'OriginalAxes');
-        imshow(img, 'Parent', ax);
-        title(ax, 'Original Image');
-
-        % Clear other axes
-        ax2 = findobj(parent, 'Tag', 'NoisyAxes');
-        cla(ax2);
-        title(ax2, 'Noisy Image');
-
-        ax3 = findobj(parent, 'Tag', 'FilteredAxes');
-        cla(ax3);
-        title(ax3, 'Filtered Image');
-
-        % Update info
-        infoText = findobj(parent, 'Tag', 'InfoText');
-        infoText.Value = {sprintf('Test image loaded: %s', selectedFile), ...
-                         sprintf('Size: %d x %d', size(img, 1), size(img, 2))};
+    % Create output folder
+    outputPath = fullfile(task5Path, 'batch_results');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
     end
+
+    % Add path to task5 folder
+    task5FuncPath = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task5');
+    addpath(task5FuncPath);
+
+    % Find UI controls to get current settings
+    controlPanel = findobj(parent, 'Type', 'uipanel', 'Title', 'Controls');
+    allDropdowns = findobj(controlPanel, 'Type', 'uidropdown');
+    allSpinners = findobj(controlPanel, 'Type', 'uispinner');
+
+    % Default settings
+    noiseTypeValue = 'Salt & Pepper';
+    noiseParamValue = 0.05;
+    filterTypeValue = 'Median Filter';
+    filterSizeValue = 5;
+    qParamValue = 1.5;
+    dParamValue = 4;
+
+    % Get current settings from UI controls
+    for i = 1:length(allDropdowns)
+        pos = allDropdowns(i).Position;
+        if abs(pos(2) - 555) < 5  % Noise type
+            noiseTypeValue = allDropdowns(i).Value;
+        elseif abs(pos(2) - 495) < 5  % Filter type
+            filterTypeValue = allDropdowns(i).Value;
+        elseif abs(pos(2) - 465) < 5  % Filter size
+            filterSizeValue = allDropdowns(i).Value;
+        end
+    end
+
+    for i = 1:length(allSpinners)
+        pos = allSpinners(i).Position;
+        if abs(pos(2) - 525) < 5  % Noise parameter
+            noiseParamValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 435) < 5  % Q parameter
+            qParamValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 405) < 5  % D parameter
+            dParamValue = allSpinners(i).Value;
+        end
+    end
+
+    % Create progress dialog
+    fig = ancestor(parent, 'figure');
+    dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                        'Message', 'Processing test images...', ...
+                        'Cancelable', true);
+
+    % Process each image
+    totalImages = length(imageFiles);
+    for idx = 1:totalImages
+        if dlg.CancelRequested
+            break;
+        end
+
+        selectedFile = imageFiles(idx).name;
+        dlg.Value = idx / totalImages;
+        dlg.Message = sprintf('Processing %s (%d/%d)...', selectedFile, idx, totalImages);
+
+        try
+            % Load image
+            img = imread(fullfile(task5Path, selectedFile));
+            parent.UserData.originalImage = img;
+
+            % Display original
+            ax1 = findobj(parent, 'Tag', 'OriginalAxes');
+            imshow(img, 'Parent', ax1);
+            title(ax1, sprintf('Original: %s', selectedFile));
+
+            % Add noise
+            switch noiseTypeValue
+                case 'Salt & Pepper'
+                    noisyImg = add_salt_pepper_noise(img, noiseParamValue);
+                case 'Gaussian'
+                    noisyImg = add_gaussian_noise(img, 0, noiseParamValue);
+                case 'Uniform'
+                    noisyImg = add_uniform_noise(img, noiseParamValue);
+            end
+            parent.UserData.noisyImage = noisyImg;
+
+            % Display noisy
+            ax2 = findobj(parent, 'Tag', 'NoisyAxes');
+            imshow(noisyImg, 'Parent', ax2);
+            title(ax2, sprintf('Noisy (%s)', noiseTypeValue));
+
+            % Apply filter
+            n = filterSizeValue;
+            switch filterTypeValue
+                case 'Min Filter'
+                    filtered = min_filter(noisyImg, n);
+                case 'Max Filter'
+                    filtered = max_filter(noisyImg, n);
+                case 'Median Filter'
+                    filtered = median_filter(noisyImg, n);
+                case 'Arithmetic Mean'
+                    filtered = arithmetic_mean_filter(noisyImg, n);
+                case 'Geometric Mean'
+                    filtered = geometric_mean_filter(noisyImg, n);
+                case 'Harmonic Mean'
+                    filtered = harmonic_mean_filter(noisyImg, n);
+                case 'Contraharmonic Mean'
+                    filtered = contraharmonic_mean_filter(noisyImg, n, qParamValue);
+                case 'Midpoint'
+                    filtered = midpoint_filter(noisyImg, n);
+                case 'Alpha-trimmed Mean'
+                    filtered = alpha_trimmed_mean_filter(noisyImg, n, dParamValue);
+            end
+            parent.UserData.filteredImage = filtered;
+
+            % Display filtered
+            ax3 = findobj(parent, 'Tag', 'FilteredAxes');
+            imshow(filtered, 'Parent', ax3);
+            title(ax3, sprintf('Filtered (%s)', filterTypeValue));
+
+            % Save results
+            [~, name, ~] = fileparts(selectedFile);
+            imwrite(noisyImg, fullfile(outputPath, sprintf('%s_noisy.png', name)));
+            imwrite(filtered, fullfile(outputPath, sprintf('%s_filtered.png', name)));
+
+            % Update info
+            infoText = findobj(parent, 'Tag', 'InfoText');
+            infoText.Value = {sprintf('Processed: %s (%d/%d)', selectedFile, idx, totalImages), ...
+                             sprintf('Noise: %s', noiseTypeValue), ...
+                             sprintf('Filter: %s', filterTypeValue), ...
+                             sprintf('Results saved to: batch_results/')};
+
+            drawnow;
+
+            % Pause for screenshot - close progress dialog first for clear view
+            if idx < totalImages
+                close(dlg);  % Close progress dialog so results are visible
+
+                % Create separate non-modal window for confirmation
+                confirmFig = uifigure('Name', 'Batch Processing', ...
+                                     'Position', [100, 100, 400, 150], ...
+                                     'WindowStyle', 'normal');
+
+                uilabel(confirmFig, 'Position', [20, 80, 360, 40], ...
+                       'Text', sprintf('Image %d/%d processed. Take screenshot if needed.', idx, totalImages), ...
+                       'FontSize', 14, ...
+                       'HorizontalAlignment', 'center');
+
+                continueBtn = uibutton(confirmFig, 'Position', [50, 20, 130, 40], ...
+                                      'Text', 'Continue', ...
+                                      'FontSize', 12);
+
+                skipBtn = uibutton(confirmFig, 'Position', [220, 20, 130, 40], ...
+                                  'Text', 'Skip Remaining', ...
+                                  'FontSize', 12);
+
+                % Wait for user response
+                userChoice = 'Continue';
+                continueBtn.ButtonPushedFcn = @(~,~) close(confirmFig);
+                skipBtn.ButtonPushedFcn = @(~,~) assignin('base', 'tempUserChoice', 'Skip');
+
+                % Wait for window to close
+                uiwait(confirmFig);
+
+                % Check if user clicked skip
+                if evalin('base', 'exist(''tempUserChoice'', ''var'')')
+                    userChoice = evalin('base', 'tempUserChoice');
+                    evalin('base', 'clear tempUserChoice');
+                end
+
+                if strcmp(userChoice, 'Skip')
+                    break;
+                end
+
+                % Recreate progress dialog for next iteration
+                dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                                    'Message', 'Processing test images...', ...
+                                    'Cancelable', true);
+            end
+
+        catch ME
+            warning('Error processing %s: %s', selectedFile, ME.message);
+        end
+    end
+
+    close(dlg);
+    uialert(fig, sprintf('Batch processing complete!\n%d images processed.\nResults saved to: %s', ...
+                         idx, outputPath), 'Success');
 end
 
 function clearAllTask5(parent)
@@ -2300,61 +3093,198 @@ function removePeriodicNoiseTask6(parent, medianKernel, notchRadius, centerRadiu
 end
 
 function loadTestImageTask6(parent)
-    % Load test images from task6 folder
+    % Batch process all test images from task6 folder
     task6Path = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task6', 'test_images');
 
-    % Get list of test images
-    imageFiles = dir(fullfile(task6Path, '*.png'));
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task6Path, '*.jpg'));
-    end
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task6Path, '*.jpeg'));
-    end
+    % Get list of ALL test images (all supported formats)
+    imageFiles = [dir(fullfile(task6Path, '*.jpg'));
+                  dir(fullfile(task6Path, '*.jpeg'));
+                  dir(fullfile(task6Path, '*.png'));
+                  dir(fullfile(task6Path, '*.bmp'));
+                  dir(fullfile(task6Path, '*.tif'))];
 
     if isempty(imageFiles)
         uialert(ancestor(parent, 'figure'), 'No test images found in task6/test_images folder!', 'Error');
         return;
     end
 
-    % Create selection dialog
-    imageNames = {imageFiles.name};
-    [idx, tf] = listdlg('ListString', imageNames, 'SelectionMode', 'single', ...
-                       'Name', 'Select Test Image', 'PromptString', 'Choose a test image:');
-
-    if tf
-        selectedFile = imageNames{idx};
-        img = imread(fullfile(task6Path, selectedFile));
-
-        parent.UserData.originalImage = img;
-        parent.UserData.cleanedImage = [];
-
-        ax = findobj(parent, 'Tag', 'OriginalAxes');
-        imshow(img, 'Parent', ax);
-        title(ax, 'Original Image');
-
-        % Clear other axes
-        ax2 = findobj(parent, 'Tag', 'FilteredAxes');
-        cla(ax2);
-        title(ax2, 'Filtered Image');
-
-        ax3 = findobj(parent, 'Tag', 'DifferenceAxes');
-        cla(ax3);
-        title(ax3, 'Difference');
-
-        ax4 = findobj(parent, 'Tag', 'SpectrumAxes');
-        cla(ax4);
-        title(ax4, 'FFT Spectrum');
-
-        ax5 = findobj(parent, 'Tag', 'FilterAxes');
-        cla(ax5);
-        title(ax5, 'Filter Response');
-
-        infoText = findobj(parent, 'Tag', 'InfoText');
-        infoText.Value = {sprintf('Test image loaded: %s', selectedFile), ...
-                         sprintf('Size: %d x %d', size(img, 1), size(img, 2)), ...
-                         'Ready to apply periodic noise removal.'};
+    % Create output folder
+    outputPath = fullfile(task6Path, 'batch_results');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
     end
+
+    % Add path to task6 folder
+    task6FuncPath = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task6');
+    addpath(task6FuncPath);
+
+    % Find UI controls to get current settings
+    controlPanel = findobj(parent, 'Type', 'uipanel', 'Title', 'Controls');
+    allDropdowns = findobj(controlPanel, 'Type', 'uidropdown');
+    allSpinners = findobj(controlPanel, 'Type', 'uispinner');
+
+    % Default settings
+    medianKernelValue = 3;
+    notchRadiusValue = 10;
+    centerRadiusValue = 20;
+    filterTypeValue = 'Auto';
+
+    % Get current settings from UI controls
+    for i = 1:length(allDropdowns)
+        pos = allDropdowns(i).Position;
+        if abs(pos(2) - 525) < 5  % Filter type
+            filterTypeValue = allDropdowns(i).Value;
+        end
+    end
+
+    for i = 1:length(allSpinners)
+        pos = allSpinners(i).Position;
+        if abs(pos(2) - 495) < 5  % Median kernel
+            medianKernelValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 465) < 5  % Notch radius
+            notchRadiusValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 435) < 5  % Center radius
+            centerRadiusValue = allSpinners(i).Value;
+        end
+    end
+
+    % Create progress dialog
+    fig = ancestor(parent, 'figure');
+    dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                        'Message', 'Processing test images...', ...
+                        'Cancelable', true);
+
+    % Process each image
+    totalImages = length(imageFiles);
+    for idx = 1:totalImages
+        if dlg.CancelRequested
+            break;
+        end
+
+        selectedFile = imageFiles(idx).name;
+        dlg.Value = idx / totalImages;
+        dlg.Message = sprintf('Processing %s (%d/%d)...', selectedFile, idx, totalImages);
+
+        try
+            % Load image
+            img = imread(fullfile(task6Path, selectedFile));
+            parent.UserData.originalImage = img;
+
+            % Display original
+            ax1 = findobj(parent, 'Tag', 'OriginalAxes');
+            imshow(img, 'Parent', ax1);
+            title(ax1, sprintf('Original: %s', selectedFile));
+
+            % Apply periodic noise removal
+            selectedFilter = lower(strrep(filterTypeValue, ' ', ''));
+            if ~ismember(selectedFilter, {'auto', 'bandreject', 'bandpass', 'notch'})
+                selectedFilter = 'auto';
+            end
+
+            % Create simple progress callback for batch mode
+            progressCallback = @(curr, tot) fprintf('.');
+
+            [filteredImg, info] = removePeriodicNoise(img, medianKernelValue, notchRadiusValue, centerRadiusValue, selectedFilter, progressCallback);
+            parent.UserData.cleanedImage = filteredImg;
+
+            % Display filtered
+            ax2 = findobj(parent, 'Tag', 'FilteredAxes');
+            imshow(filteredImg, 'Parent', ax2);
+            title(ax2, 'Filtered Image');
+
+            % Calculate and display difference
+            if size(img, 3) == 1
+                diffImg = uint8(abs(double(img) - double(filteredImg)));
+            else
+                diffImg = uint8(sum(abs(double(img) - double(filteredImg)), 3) / 3);
+            end
+
+            ax3 = findobj(parent, 'Tag', 'DifferenceAxes');
+            imshow(diffImg, 'Parent', ax3);
+            title(ax3, 'Difference');
+
+            % Display spectrum if available
+            if isfield(info, 'spectrum')
+                ax4 = findobj(parent, 'Tag', 'SpectrumAxes');
+                imshow(info.spectrum, [], 'Parent', ax4);
+                title(ax4, 'FFT Spectrum');
+            end
+
+            % Display filter if available
+            if isfield(info, 'filter')
+                ax5 = findobj(parent, 'Tag', 'FilterAxes');
+                imshow(info.filter, [], 'Parent', ax5);
+                title(ax5, 'Filter Response');
+            end
+
+            % Save results
+            [~, name, ~] = fileparts(selectedFile);
+            imwrite(filteredImg, fullfile(outputPath, sprintf('%s_filtered.png', name)));
+            imwrite(diffImg, fullfile(outputPath, sprintf('%s_diff.png', name)));
+
+            % Update info
+            infoText = findobj(parent, 'Tag', 'InfoText');
+            infoText.Value = {sprintf('Processed: %s (%d/%d)', selectedFile, idx, totalImages), ...
+                             sprintf('Filter: %s', filterTypeValue), ...
+                             sprintf('Peaks detected: %d', size(info.peaks, 1)), ...
+                             sprintf('Results saved to: batch_results/')};
+
+            drawnow;
+
+            % Pause for screenshot - close progress dialog first for clear view
+            if idx < totalImages
+                close(dlg);  % Close progress dialog so results are visible
+
+                % Create separate non-modal window for confirmation
+                confirmFig = uifigure('Name', 'Batch Processing', ...
+                                     'Position', [100, 100, 400, 150], ...
+                                     'WindowStyle', 'normal');
+
+                uilabel(confirmFig, 'Position', [20, 80, 360, 40], ...
+                       'Text', sprintf('Image %d/%d processed. Take screenshot if needed.', idx, totalImages), ...
+                       'FontSize', 14, ...
+                       'HorizontalAlignment', 'center');
+
+                continueBtn = uibutton(confirmFig, 'Position', [50, 20, 130, 40], ...
+                                      'Text', 'Continue', ...
+                                      'FontSize', 12);
+
+                skipBtn = uibutton(confirmFig, 'Position', [220, 20, 130, 40], ...
+                                  'Text', 'Skip Remaining', ...
+                                  'FontSize', 12);
+
+                % Wait for user response
+                userChoice = 'Continue';
+                continueBtn.ButtonPushedFcn = @(~,~) close(confirmFig);
+                skipBtn.ButtonPushedFcn = @(~,~) assignin('base', 'tempUserChoice', 'Skip');
+
+                % Wait for window to close
+                uiwait(confirmFig);
+
+                % Check if user clicked skip
+                if evalin('base', 'exist(''tempUserChoice'', ''var'')')
+                    userChoice = evalin('base', 'tempUserChoice');
+                    evalin('base', 'clear tempUserChoice');
+                end
+
+                if strcmp(userChoice, 'Skip')
+                    break;
+                end
+
+                % Recreate progress dialog for next iteration
+                dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                                    'Message', 'Processing test images...', ...
+                                    'Cancelable', true);
+            end
+
+        catch ME
+            warning('Error processing %s: %s', selectedFile, ME.message);
+        end
+    end
+
+    close(dlg);
+    uialert(fig, sprintf('Batch processing complete!\n%d images processed.\nResults saved to: %s', ...
+                         idx, outputPath), 'Success');
 end
 
 function clearAllTask6(parent)
@@ -2549,53 +3479,181 @@ function applyWienerFilterTask7(parent, blurLen, blurAngle, nsr, skipBlurCheckbo
 end
 
 function loadTestImageTask7(parent)
-    % Load test images from task7 folder
+    % Batch process all test images from task7 folder
     task7Path = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task7', 'test_images');
 
-    % Get list of test images
-    imageFiles = dir(fullfile(task7Path, '*.png'));
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task7Path, '*.jpg'));
-    end
-    if isempty(imageFiles)
-        imageFiles = dir(fullfile(task7Path, '*.jpeg'));
-    end
+    % Get list of ALL test images (all supported formats)
+    imageFiles = [dir(fullfile(task7Path, '*.jpg'));
+                  dir(fullfile(task7Path, '*.jpeg'));
+                  dir(fullfile(task7Path, '*.png'));
+                  dir(fullfile(task7Path, '*.bmp'));
+                  dir(fullfile(task7Path, '*.tif'))];
 
     if isempty(imageFiles)
         uialert(ancestor(parent, 'figure'), 'No test images found in task7/test_images folder!', 'Error');
         return;
     end
 
-    % Create selection dialog
-    imageNames = {imageFiles.name};
-    [idx, tf] = listdlg('ListString', imageNames, 'SelectionMode', 'single', ...
-                       'Name', 'Select Test Image', 'PromptString', 'Choose a test image:');
+    % Create output folder
+    outputPath = fullfile(task7Path, 'batch_results');
+    if ~exist(outputPath, 'dir')
+        mkdir(outputPath);
+    end
 
-    if tf
-        selectedFile = imageNames{idx};
-        img = imread(fullfile(task7Path, selectedFile));
+    % Add path to task7 folder
+    task7FuncPath = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task7');
+    addpath(task7FuncPath);
 
-        parent.UserData.originalImage = img;
-        parent.UserData.blurredImage = [];
-        parent.UserData.restoredImage = [];
+    % Find UI controls to get current settings
+    controlPanel = findobj(parent, 'Type', 'uipanel', 'Title', 'Controls');
+    allSpinners = findobj(controlPanel, 'Type', 'uispinner');
+    allCheckboxes = findobj(controlPanel, 'Type', 'uicheckbox');
 
-        ax = findobj(parent, 'Tag', 'OriginalAxes');
-        imshow(img, 'Parent', ax);
-        title(ax, 'Original Image');
+    % Default settings
+    blurLenValue = 20;
+    blurAngleValue = 45;
+    noiseVarValue = 0.0001;
+    skipBlur = false;
 
-        % Update display based on skip blur checkbox state
-        skipBlurCheckbox = findobj(parent, 'Type', 'uicheckbox', 'Text', 'Image is already blurred');
-        if ~isempty(skipBlurCheckbox)
-            toggleBlurControls(parent, skipBlurCheckbox);
+    % Get current settings from UI controls
+    for i = 1:length(allSpinners)
+        pos = allSpinners(i).Position;
+        if abs(pos(2) - 525) < 5  % Blur length
+            blurLenValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 495) < 5  % Blur angle
+            blurAngleValue = allSpinners(i).Value;
+        elseif abs(pos(2) - 435) < 5  % Noise variance
+            noiseVarValue = allSpinners(i).Value;
+        end
+    end
+
+    for i = 1:length(allCheckboxes)
+        if strcmp(allCheckboxes(i).Text, 'Image is already blurred')
+            skipBlur = allCheckboxes(i).Value;
+        end
+    end
+
+    % Create progress dialog
+    fig = ancestor(parent, 'figure');
+    dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                        'Message', 'Processing test images...', ...
+                        'Cancelable', true);
+
+    % Process each image
+    totalImages = length(imageFiles);
+    for idx = 1:totalImages
+        if dlg.CancelRequested
+            break;
         end
 
-        ax3 = findobj(parent, 'Tag', 'RestoredAxes');
-        cla(ax3);
+        selectedFile = imageFiles(idx).name;
+        dlg.Value = idx / totalImages;
+        dlg.Message = sprintf('Processing %s (%d/%d)...', selectedFile, idx, totalImages);
 
-        infoText = findobj(parent, 'Tag', 'InfoText');
-        infoText.Value = {sprintf('Test image loaded: %s', selectedFile), ...
-                         sprintf('Size: %d x %d', size(img, 1), size(img, 2))};
+        try
+            % Load image
+            img = imread(fullfile(task7Path, selectedFile));
+            parent.UserData.originalImage = img;
+
+            % Display original
+            ax1 = findobj(parent, 'Tag', 'OriginalAxes');
+            imshow(img, 'Parent', ax1);
+            title(ax1, sprintf('Original: %s', selectedFile));
+
+            % Apply motion blur if not skipped
+            if ~skipBlur
+                blurredImg = motion_blur(img, blurLenValue, blurAngleValue);
+                parent.UserData.blurredImage = blurredImg;
+
+                % Display blurred
+                ax2 = findobj(parent, 'Tag', 'BlurredAxes');
+                imshow(blurredImg, 'Parent', ax2);
+                title(ax2, sprintf('Blurred (L=%d, θ=%d°)', blurLenValue, blurAngleValue));
+            else
+                % If skipped, use original as blurred
+                blurredImg = img;
+                parent.UserData.blurredImage = blurredImg;
+            end
+
+            % Apply Wiener deblurring
+            [restoredImg, ~] = wiener_deblur(blurredImg, blurLenValue, blurAngleValue, noiseVarValue);
+            parent.UserData.restoredImage = restoredImg;
+
+            % Display restored
+            ax3 = findobj(parent, 'Tag', 'RestoredAxes');
+            imshow(restoredImg, 'Parent', ax3);
+            title(ax3, 'Restored (Wiener)');
+
+            % Save results
+            [~, name, ~] = fileparts(selectedFile);
+            if ~skipBlur
+                imwrite(blurredImg, fullfile(outputPath, sprintf('%s_blurred.png', name)));
+            end
+            imwrite(restoredImg, fullfile(outputPath, sprintf('%s_restored.png', name)));
+
+            % Update info
+            infoText = findobj(parent, 'Tag', 'InfoText');
+            infoText.Value = {sprintf('Processed: %s (%d/%d)', selectedFile, idx, totalImages), ...
+                             sprintf('Blur: L=%d, θ=%d°', blurLenValue, blurAngleValue), ...
+                             sprintf('Noise variance: %.4f', noiseVarValue), ...
+                             sprintf('Results saved to: batch_results/')};
+
+            drawnow;
+
+            % Pause for screenshot - close progress dialog first for clear view
+            if idx < totalImages
+                close(dlg);  % Close progress dialog so results are visible
+
+                % Create separate non-modal window for confirmation
+                confirmFig = uifigure('Name', 'Batch Processing', ...
+                                     'Position', [100, 100, 400, 150], ...
+                                     'WindowStyle', 'normal');
+
+                uilabel(confirmFig, 'Position', [20, 80, 360, 40], ...
+                       'Text', sprintf('Image %d/%d processed. Take screenshot if needed.', idx, totalImages), ...
+                       'FontSize', 14, ...
+                       'HorizontalAlignment', 'center');
+
+                continueBtn = uibutton(confirmFig, 'Position', [50, 20, 130, 40], ...
+                                      'Text', 'Continue', ...
+                                      'FontSize', 12);
+
+                skipBtn = uibutton(confirmFig, 'Position', [220, 20, 130, 40], ...
+                                  'Text', 'Skip Remaining', ...
+                                  'FontSize', 12);
+
+                % Wait for user response
+                userChoice = 'Continue';
+                continueBtn.ButtonPushedFcn = @(~,~) close(confirmFig);
+                skipBtn.ButtonPushedFcn = @(~,~) assignin('base', 'tempUserChoice', 'Skip');
+
+                % Wait for window to close
+                uiwait(confirmFig);
+
+                % Check if user clicked skip
+                if evalin('base', 'exist(''tempUserChoice'', ''var'')')
+                    userChoice = evalin('base', 'tempUserChoice');
+                    evalin('base', 'clear tempUserChoice');
+                end
+
+                if strcmp(userChoice, 'Skip')
+                    break;
+                end
+
+                % Recreate progress dialog for next iteration
+                dlg = uiprogressdlg(fig, 'Title', 'Batch Processing...', ...
+                                    'Message', 'Processing test images...', ...
+                                    'Cancelable', true);
+            end
+
+        catch ME
+            warning('Error processing %s: %s', selectedFile, ME.message);
+        end
     end
+
+    close(dlg);
+    uialert(fig, sprintf('Batch processing complete!\n%d images processed.\nResults saved to: %s', ...
+                         idx, outputPath), 'Success');
 end
 
 function toggleBlurControls(parent, checkbox)
