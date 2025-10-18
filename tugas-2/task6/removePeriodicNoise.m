@@ -20,6 +20,8 @@ function [g, info] = removePeriodicNoise(img, varargin)
 %   'RadiusThreshold'   - Threshold for radius spread (default: 5)
 %   'NotchRadius'       - Radius for notch filters (default: 10)
 %   'Visualize'         - Show visualization (default: false)
+%   'ProgressCallback'  - Function handle to report progress (default: [])
+%   'StopFlag'          - Struct with 'stop' field for early stopping (default: [])
 %
 % Output:
 %   g     - Filtered output image (normalized to [0,1])
@@ -47,6 +49,8 @@ function [g, info] = removePeriodicNoise(img, varargin)
     validFilterTypes = {'auto', 'bandreject', 'bandpass', 'notch'};
     addParameter(p, 'Visualize', false, @islogical);
     addParameter(p, 'FilterType', 'auto', @(x) any(strcmpi(x, validFilterTypes)));
+    addParameter(p, 'ProgressCallback', [], @(x) isempty(x) || isa(x, 'function_handle'));
+    addParameter(p, 'StopFlag', [], @(x) isempty(x) || isstruct(x));
     parse(p, img, varargin{:});
 
     params = p.Results;
@@ -112,7 +116,7 @@ function [g, info] = removePeriodicNoise(img, varargin)
     if params.Visualize
         fprintf('Matching symmetric pairs from %d peaks...\n', size(peaks, 1));
     end
-    pairs = matchSymmetricPairs(peaks, [center_u, center_v]);
+    pairs = matchSymmetricPairs(peaks, [center_u, center_v], params.ProgressCallback, params.StopFlag);
 
     % Step 10: Create appropriate filter
     appliedFilterType = 'identity';
@@ -235,7 +239,7 @@ function img_norm = normalizeImage(img)
     img_norm = img_norm / max(img_norm(:));
 end
 
-function pairs = matchSymmetricPairs(peaks, center)
+function pairs = matchSymmetricPairs(peaks, center, progressCallback, stopFlag)
 % MATCHSYMMETRICPAIRS Find symmetric pairs of peaks around center
 %
 % Periodic noise appears as symmetric patterns in the frequency domain.
@@ -243,8 +247,10 @@ function pairs = matchSymmetricPairs(peaks, center)
 % around the spectrum center (DC component).
 %
 % Input:
-%   peaks  - Nx4 matrix [u, v, width, area] of detected peaks
-%   center - [u0, v0] coordinates of spectrum center
+%   peaks            - Nx4 matrix [u, v, width, area] of detected peaks
+%   center           - [u0, v0] coordinates of spectrum center
+%   progressCallback - Function handle to report progress (optional)
+%   stopFlag         - Struct with 'stop' field for early stopping (optional)
 %
 % Output:
 %   pairs  - Mx2 matrix of [u, v] coordinates for all peaks in pairs
@@ -269,24 +275,30 @@ function pairs = matchSymmetricPairs(peaks, center)
         tolerance = 15;
     end
 
-    % Early exit if too many peaks (performance optimization)
-    max_peaks = 200;  % Limit to prevent excessive computation
-    if size(peaks, 1) > max_peaks
-        fprintf('Warning: Too many peaks detected (%d), limiting to %d most prominent\n', size(peaks, 1), max_peaks);
-        % Sort by area and keep only the largest peaks
-        [~, sort_idx] = sort(peaks(:, 4), 'descend');
-        peaks = peaks(sort_idx(1:max_peaks), :);
-    end
-
     % For each peak, find its symmetric counterpart
-    for i = 1:size(peaks, 1)
+    totalPeaks = size(peaks, 1);
+    for i = 1:totalPeaks
         if used(i)
             continue;
         end
 
-        % Progress indicator for large peak sets
-        if mod(i, 50) == 0 && size(peaks, 1) > 100
-            fprintf('  Processed %d/%d peaks...\n', i, size(peaks, 1));
+        % Check for early stopping
+        if ~isempty(stopFlag) && isfield(stopFlag, 'stop') && stopFlag.stop
+            break;
+        end
+
+        % Report progress
+        if ~isempty(progressCallback)
+            try
+                progressCallback(i, totalPeaks);
+            catch
+                % Silently ignore callback errors
+            end
+        end
+
+        % Progress indicator for large peak sets (console output)
+        if mod(i, 50) == 0 && totalPeaks > 100
+            fprintf('  Processed %d/%d peaks...\n', i, totalPeaks);
         end
 
         u1 = peaks(i, 1);

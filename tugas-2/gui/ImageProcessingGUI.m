@@ -2177,10 +2177,18 @@ function removePeriodicNoiseTask6(parent, medianKernel, notchRadius, centerRadiu
     task6Path = fullfile(fileparts(fileparts(mfilename('fullpath'))), 'task6');
     addpath(task6Path);
 
-    % Create progress dialog
+    % Create cancelable progress dialog for Task 6
     dlg = uiprogressdlg(ancestor(parent, 'figure'), 'Title', 'Processing Periodic Noise Removal...', ...
-                        'Message', 'Analyzing spectrum and applying filters...', ...
-                        'Indeterminate', 'on');
+                        'Message', 'Analyzing spectrum...', ...
+                        'Indeterminate', 'off', ...
+                        'Cancelable', 'on', ...
+                        'Value', 0);
+
+    % Create stop flag structure
+    stopFlag = struct('stop', false);
+
+    % Create progress callback function
+    progressCallback = @(current, total) updateProgress(dlg, current, total, stopFlag);
 
     % Disable controls during processing
     controlPanel = findobj(parent, 'Type', 'uipanel', 'Title', 'Controls');
@@ -2193,8 +2201,20 @@ function removePeriodicNoiseTask6(parent, medianKernel, notchRadius, centerRadiu
         [filteredImg, info] = removePeriodicNoise(img, 'MedianKernelSize', medianKernel.Value, ...
                                                  'NotchRadius', notchRadius.Value, ...
                                                  'CenterRadius', centerRadius.Value, ...
-                                                 'FilterType', selectedFilter);
+                                                 'FilterType', selectedFilter, ...
+                                                 'ProgressCallback', progressCallback, ...
+                                                 'StopFlag', stopFlag);
         elapsedTime = toc;
+
+        % Check if user cancelled
+        if stopFlag.stop
+            close(dlg);
+            set(findobj(controlPanel, 'Type', 'uibutton'), 'Enable', 'on');
+            set(findobj(controlPanel, 'Type', 'uidropdown'), 'Enable', 'on');
+            set(findobj(controlPanel, 'Type', 'uispinner'), 'Enable', 'on');
+            uialert(ancestor(parent, 'figure'), 'Processing cancelled by user.', 'Cancelled');
+            return;
+        end
 
         parent.UserData.cleanedImage = filteredImg;
 
@@ -2363,6 +2383,28 @@ function clearAllTask6(parent)
 
     infoText = findobj(parent, 'Tag', 'InfoText');
     infoText.Value = 'Cleared. Load an image to start...';
+end
+
+function updateProgress(dlg, current, total, stopFlag)
+    % Update progress dialog for Task 6 periodic noise removal
+    if isvalid(dlg)
+        % Update progress value
+        dlg.Value = current / total;
+
+        % Update message with current progress
+        dlg.Message = sprintf('Matching symmetric pairs: %d/%d peaks processed...', current, total);
+
+        % Check if user clicked Cancel
+        if dlg.CancelRequested
+            stopFlag.stop = true;
+        end
+
+        % Force MATLAB to process UI events
+        drawnow;
+    else
+        % If dialog was closed, set stop flag
+        stopFlag.stop = true;
+    end
 end
 
 %% Helper Functions for Task 7
