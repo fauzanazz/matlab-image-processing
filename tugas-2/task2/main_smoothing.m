@@ -1,533 +1,559 @@
-%% MAIN_SMOOTHING - Program Testing Image Smoothing
+%% MAIN_SMOOTHING - Image Smoothing / Blurring
+% Fitur:
+%   RANAH SPASIAL (menggunakan konvolusi dari Task 1):
+%     - Mean Filter n x n
+%     - Gaussian Filter n x n
+%
+%   RANAH FREKUENSI (Slide 12-41):
+%     - ILPF (Ideal Low-Pass Filter) - Slide 12
+%     - GLPF (Gaussian Low-Pass Filter) - Slide 26
+%     - BLPF (Butterworth Low-Pass Filter) - Slide 27
+%
+%   - Support citra grayscale dan RGB
+%   - Testing pada citra dengan noise (derau)
+
 clear; clc; close all;
 
-%% 1. SETUP
-fprintf('=== IMAGE SMOOTHING & BLURRING ===\n');
-fprintf('Spatial Domain: Mean, Gaussian, Median Filters\n');
-fprintf('Frequency Domain: ILPF, GLPF, BLPF\n\n');
+fprintf('================================================================\n');
+fprintf('    IMAGE SMOOTHING / BLURRING\n');
+fprintf('    Ranah Spasial dan Ranah Frekuensi\n');
+fprintf('================================================================\n\n');
 
-addpath(genpath('.'));
+%% 1. SETUP
+fprintf('1. SETUP\n');
+fprintf('   Ranah Spasial: Mean Filter, Gaussian Filter (Task 1 Convolution)\n');
+fprintf('   Ranah Frekuensi: ILPF, GLPF, BLPF (Slide 12-41)\n\n');
 
 %% 2. LOAD TEST IMAGES
+fprintf('2. LOAD TEST IMAGES\n');
+fprintf('   Requirement: 3 grayscale + 3 color + 2 tambahan\n\n');
+
 try
     imgGray1 = imread('cameraman.tif');
-    fprintf('Grayscale 1: cameraman.tif\n');
+    fprintf('   Grayscale 1: cameraman.tif\n');
 catch
-    imgGray1 = imread('coins.png');
-    fprintf('Grayscale 1: coins.png\n');
+    imgGray1 = uint8(rand(256,256)*255);
+    fprintf('   Grayscale 1: random image\n');
 end
 
 try
     imgGray2 = imread('pout.tif');
-    fprintf('Grayscale 2: pout.tif\n');
+    fprintf('   Grayscale 2: pout.tif\n');
 catch
     imgGray2 = uint8(rand(256,256)*255);
-    fprintf('Grayscale 2: random image\n');
+    fprintf('   Grayscale 2: random image\n');
 end
 
 try
     imgGray3 = imread('rice.png');
-    fprintf('Grayscale 3: rice.png\n');
+    fprintf('   Grayscale 3: rice.png\n');
 catch
     imgGray3 = uint8(rand(256,256)*255);
-    fprintf('Grayscale 3: random image\n');
+    fprintf('   Grayscale 3: random image\n');
 end
 
-% Color images
+try
+    imgGrayExtra = imread('coins.png');
+    fprintf('   Grayscale Extra: coins.png\n');
+catch
+    imgGrayExtra = imgGray1;
+    fprintf('   Grayscale Extra: using cameraman\n');
+end
+
 try
     imgColor1 = imread('peppers.png');
-    fprintf('Color 1: peppers.png\n');
+    fprintf('   Color 1: peppers.png\n');
 catch
     imgColor1 = uint8(rand(256,256,3)*255);
-    fprintf('Color 1: random image\n');
+    fprintf('   Color 1: random image\n');
 end
 
 try
     imgColor2 = imread('autumn.tif');
-    fprintf('Color 2: autumn.tif\n');
+    fprintf('   Color 2: autumn.tif\n');
 catch
     imgColor2 = uint8(rand(256,256,3)*255);
-    fprintf('Color 2: random image\n');
+    fprintf('   Color 2: random image\n');
 end
 
 try
     imgColor3 = imread('football.jpg');
-    fprintf('Color 3: football.jpg\n');
+    fprintf('   Color 3: football.jpg\n');
 catch
-    imgColor3 = uint8(rand(256,256,3)*255);
-    fprintf('Color 3: random image\n');
+    imgColor3 = imgColor1;
+    fprintf('   Color 3: using peppers\n');
 end
 
-%% 3. TEST 1 - SPATIAL SMOOTHING PADA GRAYSCALE
-fprintf('\n=== TEST 1: SPATIAL SMOOTHING - GRAYSCALE ===\n');
+try
+    imgColorExtra = imread('flowers.tif');
+    fprintf('   Color Extra: flowers.tif\n');
+catch
+    imgColorExtra = imgColor1;
+    fprintf('   Color Extra: using peppers\n');
+end
+
+fprintf('\n');
+
+%% 3. PARAMETER
+fprintf('3. PARAMETER FILTERING\n');
+
+n_mean = 5;           % Mean filter size
+n_gauss = 5;          % Gaussian filter size
+sigma_gauss = 1.0;    % Gaussian sigma
+
+D0 = 50;              % Cutoff frequency
+n_butter = 2;         % Butterworth order
+usePadding = true;    % Padding 2x (Slide 13)
+
+fprintf('   SPATIAL DOMAIN:\n');
+fprintf('   - Mean filter: %dx%d\n', n_mean, n_mean);
+fprintf('   - Gaussian filter: %dx%d (sigma=%.1f)\n', n_gauss, n_gauss, sigma_gauss);
+fprintf('\n   FREQUENCY DOMAIN:\n');
+fprintf('   - Cutoff frequency (D0): %d\n', D0);
+fprintf('   - Butterworth order (n): %d\n', n_butter);
+fprintf('   - Padding: %s\n\n', iif(usePadding, '2x (P=2M, Q=2N) - Slide 13', 'No padding'));
+
+%% 4. TEST 1 - SMOOTHING PADA GRAYSCALE DENGAN NOISE
+fprintf('4. TEST 1: SMOOTHING GRAYSCALE (dengan Gaussian Noise)\n');
 
 [noisyGray, noiseParams] = addNoise(imgGray1, 'gaussian', 0, 0.01);
-fprintf('Noise added: Gaussian (mean=0, var=0.01)\n');
+fprintf('   Noise: Gaussian (mean=0, var=0.01)\n\n');
 
-filterSizes = [3, 5, 7];
+% Spatial domain
+fprintf('   Spatial filtering...\n');
+tic; [meanResult, meanKernel] = meanFilter(noisyGray, n_mean); t_mean = toc;
+fprintf('   - Mean filter: %.4fs\n', t_mean);
 
-figure('Name', 'Spatial Smoothing - Grayscale', 'Position', [50 50 1400 900]);
+tic; [gaussResult, gaussKernel] = gaussianFilter(noisyGray, n_gauss, sigma_gauss); t_gauss = toc;
+fprintf('   - Gaussian filter: %.4fs\n', t_gauss);
+
+% Frequency domain
+fprintf('   Frequency filtering...\n');
+tic; [ilpfResult, H_ilpf, spec_ilpf] = ilpf(noisyGray, D0, usePadding); t_ilpf = toc;
+fprintf('   - ILPF: %.4fs\n', t_ilpf);
+
+tic; [glpfResult, H_glpf, spec_glpf] = glpf(noisyGray, D0, usePadding); t_glpf = toc;
+fprintf('   - GLPF: %.4fs\n', t_glpf);
+
+tic; [blpfResult, H_blpf, spec_blpf] = blpf(noisyGray, D0, n_butter, usePadding); t_blpf = toc;
+fprintf('   - BLPF: %.4fs\n\n', t_blpf);
+
+figure('Name', 'Test 1: Smoothing Grayscale', 'Position', [50 50 1400 900]);
 
 subplot(3, 4, 1);
-imshow(imgGray1); title('Original');
+imshow(imgGray1);
+title('Original');
 
 subplot(3, 4, 2);
-imshow(noisyGray); title('Noisy (Gaussian)');
+imshow(noisyGray);
+title('Noisy (Gaussian)');
 
-idx = 3;
-for n = filterSizes
-    % Mean filter
-    smoothedMean = spatialSmoothing(noisyGray, 'mean', n);
-    subplot(3, 4, idx);
-    imshow(smoothedMean);
-    title(sprintf('Mean %dx%d', n, n));
-    idx = idx + 1;
-end
+subplot(3, 4, 3);
+imshow(meanResult);
+title(sprintf('Mean %dx%d (Spatial)', n_mean, n_mean));
 
-idx = 7;
-for n = filterSizes
-    % Gaussian filter
-    smoothedGauss = spatialSmoothing(noisyGray, 'gaussian', n, n/5);
-    subplot(3, 4, idx);
-    imshow(smoothedGauss);
-    title(sprintf('Gaussian %dx%d', n, n));
-    idx = idx + 1;
-end
+subplot(3, 4, 4);
+imshow(gaussResult);
+title(sprintf('Gaussian %dx%d (Spatial)', n_gauss, n_gauss));
 
-% Median filter 
-[noisySP, ~] = addNoise(imgGray1, 'salt_pepper', 0.05);
+subplot(3, 4, 5);
+text(0.5, 0.5, 'Frequency Domain', 'HorizontalAlignment', 'center', 'FontSize', 11, 'FontWeight', 'bold');
+axis off;
+
+subplot(3, 4, 6);
+imshow(ilpfResult);
+title(sprintf('ILPF D0=%d', D0));
+
+subplot(3, 4, 7);
+imshow(glpfResult);
+title(sprintf('GLPF D0=%d', D0));
+
+subplot(3, 4, 8);
+imshow(blpfResult);
+title(sprintf('BLPF D0=%d n=%d', D0, n_butter));
+
+subplot(3, 4, 9);
+imshow(meanKernel, []);
+title('Mean Kernel');
+colorbar;
+
+subplot(3, 4, 10);
+imshow(H_ilpf);
+title('ILPF Filter H(u,v)');
+colorbar;
+
 subplot(3, 4, 11);
-imshow(noisySP); title('Salt & Pepper Noise');
+imshow(H_glpf);
+title('GLPF Filter H(u,v)');
+colorbar;
 
-smoothedMedian = spatialSmoothing(noisySP, 'median', 5);
 subplot(3, 4, 12);
-imshow(smoothedMedian); title('Median Filter 5x5');
+imshow(H_blpf);
+title('BLPF Filter H(u,v)');
+colorbar;
 
-%% 4. TEST 2 - FREQUENCY SMOOTHING PADA GRAYSCALE
-fprintf('\n=== TEST 2: FREQUENCY SMOOTHING - GRAYSCALE ===\n');
+sgtitle('Test 1: Smoothing/Blurring Grayscale dengan Noise', 'FontSize', 14, 'FontWeight', 'bold');
 
-cutoffFreqs = [20, 40, 60];
+%% 5. TEST 2 - 3D FILTER VISUALIZATION 
+fprintf('5. TEST 2: 3D FILTER VISUALIZATION \n\n');
 
-figure('Name', 'Frequency Smoothing - Grayscale', 'Position', [50 50 1400 900]);
+figure('Name', 'Test 2: 3D Filter Visualization', 'Position', [100 100 1400 400]);
 
-subplot(3, 4, 1);
-imshow(imgGray1); title('Original');
+subplot(1, 3, 1);
+mesh(H_ilpf);
+title('ILPF - 3D View');
+xlabel('u'); ylabel('v'); zlabel('H(u,v)');
+colormap(gca, 'jet');
+view(45, 30);
 
-subplot(3, 4, 2);
-imshow(noisyGray); title('Noisy (Gaussian)');
+subplot(1, 3, 2);
+mesh(H_glpf);
+title('GLPF - 3D View');
+xlabel('u'); ylabel('v'); zlabel('H(u,v)');
+colormap(gca, 'jet');
+view(45, 30);
 
-idx = 3;
-for D0 = cutoffFreqs
-    % ILPF
-    [smoothedILPF, ~, spectrum] = frequencySmoothing(noisyGray, 'ILPF', D0);
-    subplot(3, 4, idx);
-    imshow(smoothedILPF);
-    title(sprintf('ILPF D0=%d', D0));
-    idx = idx + 1;
-end
+subplot(1, 3, 3);
+mesh(H_blpf);
+title(sprintf('BLPF (n=%d) - 3D View', n_butter));
+xlabel('u'); ylabel('v'); zlabel('H(u,v)');
+colormap(gca, 'jet');
+view(45, 30);
 
-idx = 7;
-for D0 = cutoffFreqs
-    % GLPF
-    smoothedGLPF = frequencySmoothing(noisyGray, 'GLPF', D0);
-    subplot(3, 4, idx);
-    imshow(smoothedGLPF);
-    title(sprintf('GLPF D0=%d', D0));
-    idx = idx + 1;
-end
+sgtitle('3D Filter Visualization (Slide 21, 33, 39)', 'FontSize', 12, 'FontWeight', 'bold');
 
-idx = 11;
-for D0 = [30, 50]
-    % BLPF
-    smoothedBLPF = frequencySmoothing(noisyGray, 'BLPF', D0, 2);
-    subplot(3, 4, idx);
-    imshow(smoothedBLPF);
-    title(sprintf('BLPF D0=%d n=2', D0));
-    idx = idx + 1;
-end
+%% 6. TEST 3 - RINGING EFFECT
+fprintf('6. TEST 3: RINGING EFFECT DEMONSTRATION\n');
+fprintf('   ILPF menimbulkan ringing, GLPF tidak\n\n');
 
-%% 5. TEST 3 - VISUALISASI FILTER FREKUENSI
-fprintf('\n=== TEST 3: VISUALISASI FILTER FREKUENSI ===\n');
+D0_ring = 30; 
+[ilpf_ring, ~, ~] = ilpf(noisyGray, D0_ring, usePadding);
+[glpf_ring, ~, ~] = glpf(noisyGray, D0_ring, usePadding);
+diff_ring = abs(double(ilpf_ring) - double(glpf_ring));
 
-[M, N] = size(noisyGray);
-D0 = 40;
-
-filterILPF = createLowPassFilter(M, N, 'ILPF', D0);
-filterGLPF = createLowPassFilter(M, N, 'GLPF', D0);
-filterBLPF = createLowPassFilter(M, N, 'BLPF', D0, 2);
-
-figure('Name', 'Low-Pass Filters Visualization', 'Position', [50 50 1400 400]);
+figure('Name', 'Test 3: Ringing Effect', 'Position', [50 50 1400 500]);
 
 subplot(1, 4, 1);
-imshow(filterILPF, []); title('ILPF');
-colorbar;
+imshow(noisyGray);
+title('Noisy Image');
 
 subplot(1, 4, 2);
-imshow(filterGLPF, []); title('GLPF');
-colorbar;
+imshow(ilpf_ring);
+title(sprintf('ILPF D0=%d\nADA RINGING', D0_ring), 'Color', 'red');
 
 subplot(1, 4, 3);
-imshow(filterBLPF, []); title('BLPF (n=2)');
-colorbar;
+imshow(glpf_ring);
+title(sprintf('GLPF D0=%d\nTIDAK ADA RINGING', D0_ring), 'Color', 'green');
 
 subplot(1, 4, 4);
-centerRow = round(M/2);
-plot(filterILPF(centerRow, :), 'b-', 'LineWidth', 2); hold on;
-plot(filterGLPF(centerRow, :), 'r-', 'LineWidth', 2);
-plot(filterBLPF(centerRow, :), 'g-', 'LineWidth', 2);
-legend('ILPF', 'GLPF', 'BLPF');
-title('Filter Cross-Section');
-xlabel('Frequency'); ylabel('H(u,v)');
-grid on;
+imshow(diff_ring, []);
+title('Difference (Ringing Artifact)');
+colorbar; colormap(gca, 'hot');
 
-%% 6. TEST 4 - SPEKTRUM FOURIER
-fprintf('\n=== TEST 4: SPEKTRUM FOURIER ===\n');
+sgtitle('Ringing Effect: ILPF (Diskontinuitas) vs GLPF (Smooth)', 'FontSize', 14);
 
-F_orig = fft2(double(imgGray1));
-F_orig_shifted = fftshift(F_orig);
-spectrum_orig = log(1 + abs(F_orig_shifted));
+%% 7. TEST 4 - EFFECT OF CUTOFF FREQUENCY (D0)
+fprintf('7. TEST 4: EFFECT OF CUTOFF FREQUENCY (D0)\n');
 
-F_noisy = fft2(double(noisyGray));
-F_noisy_shifted = fftshift(F_noisy);
-spectrum_noisy = log(1 + abs(F_noisy_shifted));
+D0_values = [10, 30, 50, 80, 120];
 
-[smoothedGLPF, ~, spectrumGLPF] = frequencySmoothing(noisyGray, 'GLPF', 40);
+figure('Name', 'Test 4: Effect of D0 on GLPF', 'Position', [50 50 1400 800]);
 
-figure('Name', 'Fourier Spectrum Analysis', 'Position', [50 50 1400 500]);
+for i = 1:length(D0_values)
+    D0_test = D0_values(i);
+    [result_test, ~, ~] = glpf(noisyGray, D0_test, usePadding);
 
-subplot(2, 4, 1);
-imshow(imgGray1); title('Original Image');
+    subplot(2, 3, i);
+    imshow(result_test);
+    title(sprintf('GLPF D0=%d', D0_test));
 
-subplot(2, 4, 2);
-imshow(spectrum_orig, []); title('Original Spectrum');
-colormap(gca, 'jet'); colorbar;
+    fprintf('   D0=%d processed\n', D0_test);
+end
 
-subplot(2, 4, 3);
-imshow(noisyGray); title('Noisy Image');
+subplot(2, 3, 6);
+imshow(noisyGray);
+title('Noisy Original');
 
-subplot(2, 4, 4);
-imshow(spectrum_noisy, []); title('Noisy Spectrum');
-colormap(gca, 'jet'); colorbar;
+sgtitle('Effect of Cutoff Frequency (D0) on GLPF', 'FontSize', 14);
+fprintf('\n');
 
-subplot(2, 4, 5);
-imshow(smoothedGLPF); title('Filtered Image (GLPF)');
-
-subplot(2, 4, 6);
-imshow(spectrumGLPF.filtered, []); title('Filtered Spectrum');
-colormap(gca, 'jet'); colorbar;
-
-subplot(2, 4, 7);
-imshow(spectrumGLPF.filter, []); title('GLPF Filter');
-colormap(gca, 'jet'); colorbar;
-
-subplot(2, 4, 8);
-diffSpectrum = abs(spectrum_noisy - spectrumGLPF.filtered);
-imshow(diffSpectrum, []); title('Spectrum Difference');
-colormap(gca, 'jet'); colorbar;
-
-%% 7. TEST 5 - COLOR IMAGE SMOOTHING
-fprintf('\n=== TEST 5: COLOR IMAGE SMOOTHING ===\n');
+%% 8. TEST 5 - COLOR IMAGE SMOOTHING
+fprintf('8. TEST 5: SMOOTHING COLOR IMAGE\n');
 
 [noisyColor, ~] = addNoise(imgColor1, 'gaussian', 0, 0.01);
+fprintf('   Noise: Gaussian (mean=0, var=0.01)\n\n');
+fprintf('   Applying filters on color image...\n');
+[meanColor, ~] = meanFilter(noisyColor, n_mean);
+[gaussColor, ~] = gaussianFilter(noisyColor, n_gauss, sigma_gauss);
+[ilpfColor, ~, ~] = ilpf(noisyColor, D0, usePadding);
+[glpfColor, ~, ~] = glpf(noisyColor, D0, usePadding);
+[blpfColor, ~, ~] = blpf(noisyColor, D0, n_butter, usePadding);
 
-figure('Name', 'Color Image Smoothing', 'Position', [50 50 1400 800]);
+fprintf('   Done!\n\n');
 
-subplot(3, 4, 1);
-imshow(imgColor1); title('Original Color');
+figure('Name', 'Test 5: Smoothing Color Image', 'Position', [50 50 1400 800]);
 
-subplot(3, 4, 2);
-imshow(noisyColor); title('Noisy Color');
+subplot(3, 3, 1);
+imshow(imgColor1);
+title('Original RGB');
 
-% Spatial methods
-smoothedColorMean = spatialSmoothing(noisyColor, 'mean', 5);
-subplot(3, 4, 3);
-imshow(smoothedColorMean); title('Mean Filter 5x5');
+subplot(3, 3, 2);
+imshow(noisyColor);
+title('Noisy RGB');
 
-smoothedColorGauss = spatialSmoothing(noisyColor, 'gaussian', 5, 1.0);
-subplot(3, 4, 4);
-imshow(smoothedColorGauss); title('Gaussian Filter 5x5');
+subplot(3, 3, 3);
+text(0.5, 0.5, 'Smoothing Results', 'HorizontalAlignment', 'center', 'FontSize', 11);
+axis off;
 
-smoothedColorMedian = spatialSmoothing(noisyColor, 'median', 5);
-subplot(3, 4, 5);
-imshow(smoothedColorMedian); title('Median Filter 5x5');
+% Spatial results
+subplot(3, 3, 4);
+imshow(meanColor);
+title('Mean Filter (Spatial)');
 
-smoothedColorBilateral = spatialSmoothing(noisyColor, 'bilateral', 5, 1.0);
-subplot(3, 4, 6);
-imshow(smoothedColorBilateral); title('Bilateral Filter 5x5');
+subplot(3, 3, 5);
+imshow(gaussColor);
+title('Gaussian Filter (Spatial)');
 
-% Frequency methods
-smoothedColorILPF = frequencySmoothing(noisyColor, 'ILPF', 40);
-subplot(3, 4, 7);
-imshow(smoothedColorILPF); title('ILPF D0=40');
+subplot(3, 3, 6);
+text(0.5, 0.5, sprintf('Spatial Domain\n(Task 1 Convolution)'), 'HorizontalAlignment', 'center', 'FontSize', 10);
+axis off;
 
-smoothedColorGLPF = frequencySmoothing(noisyColor, 'GLPF', 40);
-subplot(3, 4, 8);
-imshow(smoothedColorGLPF); title('GLPF D0=40');
+% Frequency results
+subplot(3, 3, 7);
+imshow(ilpfColor);
+title('ILPF (Frequency)');
 
-smoothedColorBLPF = frequencySmoothing(noisyColor, 'BLPF', 40, 2);
-subplot(3, 4, 9);
-imshow(smoothedColorBLPF); title('BLPF D0=40');
+subplot(3, 3, 8);
+imshow(glpfColor);
+title('GLPF (Frequency)');
 
-metricsColorGauss = evaluateQuality(imgColor1, smoothedColorGauss, noisyColor);
-subplot(3, 4, 10);
-bar([metricsColorGauss.PSNR]);
-title(sprintf('PSNR: %.2f dB', metricsColorGauss.PSNR));
-ylabel('PSNR (dB)');
+subplot(3, 3, 9);
+imshow(blpfColor);
+title('BLPF (Frequency)');
 
-metricsColorGLPF = evaluateQuality(imgColor1, smoothedColorGLPF, noisyColor);
-subplot(3, 4, 11);
-bar([metricsColorGLPF.PSNR]);
-title(sprintf('PSNR: %.2f dB', metricsColorGLPF.PSNR));
-ylabel('PSNR (dB)');
+sgtitle('Smoothing/Blurring Color Image', 'FontSize', 14, 'FontWeight', 'bold');
 
-subplot(3, 4, 12);
-methods_names = {'Mean', 'Gauss', 'Median', 'Bilateral', 'ILPF', 'GLPF', 'BLPF'};
-psnr_values = [
-    evaluateQuality(imgColor1, smoothedColorMean, noisyColor).PSNR,
-    metricsColorGauss.PSNR,
-    evaluateQuality(imgColor1, smoothedColorMedian, noisyColor).PSNR,
-    evaluateQuality(imgColor1, smoothedColorBilateral, noisyColor).PSNR,
-    evaluateQuality(imgColor1, smoothedColorILPF, noisyColor).PSNR,
-    metricsColorGLPF.PSNR,
-    evaluateQuality(imgColor1, smoothedColorBLPF, noisyColor).PSNR
-];
-bar(psnr_values);
-set(gca, 'XTickLabel', methods_names);
-xtickangle(45);
-ylabel('PSNR (dB)');
-title('Method Comparison');
-grid on;
-
-%% 8. TEST 6 - COMPREHENSIVE COMPARISON
-fprintf('\n=== TEST 6: COMPREHENSIVE COMPARISON ===\n');
-
-results = compareSmoothing(imgGray1, noisyGray, 5, 40);
-figure('Name', 'Comprehensive Comparison', 'Position', [50 50 1400 800]);
-
-subplot(3, 4, 1);
-imshow(imgGray1); title('Original');
-
-subplot(3, 4, 2);
-imshow(noisyGray); title('Noisy');
-
-for i = 1:length(results)
-    subplot(3, 4, i+2);
-    imshow(results(i).smoothed);
-    title(sprintf('%s\nPSNR: %.2f dB', ...
-        strrep(results(i).method, 'Spatial - ', ''), ...
-        results(i).metrics.PSNR));
-end
-
-figure('Name', 'Metrics Comparison', 'Position', [50 50 1200 600]);
-
-% PSNR
-subplot(2, 3, 1);
-psnr_vals = arrayfun(@(x) x.metrics.PSNR, results);
-bar(psnr_vals);
-set(gca, 'XTickLabel', 1:length(results));
-ylabel('PSNR (dB)'); title('PSNR Comparison');
-grid on;
-
-% SSIM
-subplot(2, 3, 2);
-ssim_vals = arrayfun(@(x) x.metrics.SSIM, results);
-bar(ssim_vals);
-set(gca, 'XTickLabel', 1:length(results));
-ylabel('SSIM'); title('SSIM Comparison');
-grid on;
-
-% Processing Time
-subplot(2, 3, 3);
-time_vals = arrayfun(@(x) x.time, results);
-bar(time_vals);
-set(gca, 'XTickLabel', 1:length(results));
-ylabel('Time (s)'); title('Processing Time');
-grid on;
-
-% Noise Reduction
-subplot(2, 3, 4);
-noise_red = arrayfun(@(x) x.metrics.NoiseReduction, results);
-bar(noise_red);
-set(gca, 'XTickLabel', 1:length(results));
-ylabel('Noise Reduction (%)'); title('Noise Reduction');
-grid on;
-
-% MSE
-subplot(2, 3, 5);
-mse_vals = arrayfun(@(x) x.metrics.MSE, results);
-bar(mse_vals);
-set(gca, 'XTickLabel', 1:length(results));
-ylabel('MSE'); title('MSE Comparison');
-grid on;
-
-% Correlation
-subplot(2, 3, 6);
-corr_vals = arrayfun(@(x) x.metrics.Correlation, results);
-bar(corr_vals);
-set(gca, 'XTickLabel', 1:length(results));
-ylabel('Correlation'); title('Correlation Coefficient');
-grid on;
-
-%% 9. TEST 7 - DIFFERENT NOISE TYPES
-fprintf('\n=== TEST 7: BERBAGAI JENIS NOISE ===\n');
-
-noiseTypes = {'gaussian', 'salt_pepper', 'speckle'};
-
-figure('Name', 'Different Noise Types', 'Position', [50 50 1400 900]);
-
-for i = 1:length(noiseTypes)
-    switch noiseTypes{i}
-        case 'gaussian'
-            [noisy, ~] = addNoise(imgGray1, 'gaussian', 0, 0.01);
-        case 'salt_pepper'
-            [noisy, ~] = addNoise(imgGray1, 'salt_pepper', 0.05);
-        case 'speckle'
-            [noisy, ~] = addNoise(imgGray1, 'speckle', 0.04);
-    end
-    
-    subplot(3, 5, (i-1)*5 + 1);
-    imshow(imgGray1);
-    if i == 1
-        title('Original');
-    end
-    
-    subplot(3, 5, (i-1)*5 + 2);
-    imshow(noisy);
-    title([upper(noiseTypes{i}(1)) noiseTypes{i}(2:end) ' Noise']);
-    
-    if strcmp(noiseTypes{i}, 'gaussian')
-        smoothed1 = spatialSmoothing(noisy, 'gaussian', 5, 1.0);
-        smoothed2 = frequencySmoothing(noisy, 'GLPF', 40);
-        label1 = 'Gaussian 5x5';
-        label2 = 'GLPF D0=40';
-    elseif strcmp(noiseTypes{i}, 'salt_pepper')
-        smoothed1 = spatialSmoothing(noisy, 'median', 5);
-        smoothed2 = spatialSmoothing(noisy, 'gaussian', 5, 1.0);
-        label1 = 'Median 5x5';
-        label2 = 'Gaussian 5x5';
-    else
-        smoothed1 = spatialSmoothing(noisy, 'gaussian', 7, 1.4);
-        smoothed2 = frequencySmoothing(noisy, 'GLPF', 35);
-        label1 = 'Gaussian 7x7';
-        label2 = 'GLPF D0=35';
-    end
-    
-    subplot(3, 5, (i-1)*5 + 3);
-    imshow(smoothed1);
-    metrics1 = evaluateQuality(imgGray1, smoothed1, noisy);
-    title(sprintf('%s\nPSNR: %.2f', label1, metrics1.PSNR));
-    
-    subplot(3, 5, (i-1)*5 + 4);
-    imshow(smoothed2);
-    metrics2 = evaluateQuality(imgGray1, smoothed2, noisy);
-    title(sprintf('%s\nPSNR: %.2f', label2, metrics2.PSNR));
-    
-    subplot(3, 5, (i-1)*5 + 5);
-    bar([metrics1.PSNR, metrics2.PSNR]);
-    set(gca, 'XTickLabel', {'Method 1', 'Method 2'});
-    ylabel('PSNR (dB)');
-    title('Comparison');
-    grid on;
-end
-
-%% 10. TEST 8 - PARAMETER SENSITIVITY
-fprintf('\n=== TEST 8: PARAMETER SENSITIVITY ===\n');
-
-filterSizesTest = 3:2:15;
-psnr_mean = zeros(size(filterSizesTest));
-psnr_gauss = zeros(size(filterSizesTest));
-
-fprintf('Testing filter sizes: ');
-for i = 1:length(filterSizesTest)
-    n = filterSizesTest(i);
-    fprintf('%d ', n);
-    
-    smoothedMean = spatialSmoothing(noisyGray, 'mean', n);
-    metrics = evaluateQuality(imgGray1, smoothedMean, noisyGray);
-    psnr_mean(i) = metrics.PSNR;
-    
-    smoothedGauss = spatialSmoothing(noisyGray, 'gaussian', n, n/5);
-    metrics = evaluateQuality(imgGray1, smoothedGauss, noisyGray);
-    psnr_gauss(i) = metrics.PSNR;
-end
-fprintf('\n');
-
-cutoffFreqsTest = 10:10:100;
-psnr_ilpf = zeros(size(cutoffFreqsTest));
-psnr_glpf = zeros(size(cutoffFreqsTest));
-psnr_blpf = zeros(size(cutoffFreqsTest));
-
-fprintf('Testing cutoff frequencies: ');
-for i = 1:length(cutoffFreqsTest)
-    D0 = cutoffFreqsTest(i);
-    fprintf('%d ', D0);
-    
-    smoothedILPF = frequencySmoothing(noisyGray, 'ILPF', D0);
-    metrics = evaluateQuality(imgGray1, smoothedILPF, noisyGray);
-    psnr_ilpf(i) = metrics.PSNR;
-    
-    smoothedGLPF = frequencySmoothing(noisyGray, 'GLPF', D0);
-    metrics = evaluateQuality(imgGray1, smoothedGLPF, noisyGray);
-    psnr_glpf(i) = metrics.PSNR;
-    
-    smoothedBLPF = frequencySmoothing(noisyGray, 'BLPF', D0, 2);
-    metrics = evaluateQuality(imgGray1, smoothedBLPF, noisyGray);
-    psnr_blpf(i) = metrics.PSNR;
-end
-fprintf('\n');
-figure('Name', 'Parameter Sensitivity Analysis', 'Position', [50 50 1200 500]);
-
-subplot(1, 2, 1);
-plot(filterSizesTest, psnr_mean, 'b-o', 'LineWidth', 2); hold on;
-plot(filterSizesTest, psnr_gauss, 'r-s', 'LineWidth', 2);
-xlabel('Filter Size (n×n)');
-ylabel('PSNR (dB)');
-title('Spatial Domain - Filter Size Effect');
-legend('Mean Filter', 'Gaussian Filter');
-grid on;
-
-subplot(1, 2, 2);
-plot(cutoffFreqsTest, psnr_ilpf, 'b-o', 'LineWidth', 2); hold on;
-plot(cutoffFreqsTest, psnr_glpf, 'r-s', 'LineWidth', 2);
-plot(cutoffFreqsTest, psnr_blpf, 'g-d', 'LineWidth', 2);
-xlabel('Cutoff Frequency (D0)');
-ylabel('PSNR (dB)');
-title('Frequency Domain - Cutoff Frequency Effect');
-legend('ILPF', 'GLPF', 'BLPF');
-grid on;
-
-%% 11. TEST 9 - MULTIPLE IMAGES BATCH PROCESSING
-fprintf('\n=== TEST 9: BATCH PROCESSING ===\n');
+%% 9. TEST 6 - BATCH PROCESSING (3 Grayscale Images)
+fprintf('9. TEST 6: BATCH PROCESSING - 3 GRAYSCALE IMAGES\n');
 
 grayImages = {imgGray1, imgGray2, imgGray3};
-colorImages = {imgColor1, imgColor2, imgColor3};
+imageNames = {'Image 1', 'Image 2', 'Image 3'};
 
-fprintf('Processing grayscale images...\n');
+figure('Name', 'Test 6: Batch Grayscale Processing', 'Position', [50 50 1400 900]);
+
 for i = 1:length(grayImages)
     img = grayImages{i};
     [noisy, ~] = addNoise(img, 'gaussian', 0, 0.01);
-    
-    smoothedSpatial = spatialSmoothing(noisy, 'gaussian', 5, 1.0);
-    smoothedFreq = frequencySmoothing(noisy, 'GLPF', 40);
-    
-    metricsSpatial = evaluateQuality(img, smoothedSpatial, noisy);
-    metricsFreq = evaluateQuality(img, smoothedFreq, noisy);
-    
-    fprintf('  Image %d - Spatial PSNR: %.2f, Frequency PSNR: %.2f\n', ...
-        i, metricsSpatial.PSNR, metricsFreq.PSNR);
+
+    [smoothed_spatial, ~] = gaussianFilter(noisy, 5, 1.0);
+    [smoothed_freq, ~, ~] = glpf(noisy, D0, usePadding);
+
+    % Original
+    subplot(3, 4, (i-1)*4 + 1);
+    imshow(img);
+    if i == 1, title('Original'); else, title(''); end
+    ylabel(imageNames{i}, 'FontWeight', 'bold');
+
+    % Noisy
+    subplot(3, 4, (i-1)*4 + 2);
+    imshow(noisy);
+    if i == 1, title('Noisy'); else, title(''); end
+
+    % Spatial
+    subplot(3, 4, (i-1)*4 + 3);
+    imshow(smoothed_spatial);
+    if i == 1, title('Gaussian Filter'); else, title(''); end
+
+    % Frequency
+    subplot(3, 4, (i-1)*4 + 4);
+    imshow(smoothed_freq);
+    if i == 1, title('GLPF'); else, title(''); end
+
+    fprintf('   %s: Processed\n', imageNames{i});
 end
 
-fprintf('Processing color images...\n');
+sgtitle('Batch Processing: 3 Grayscale Images', 'FontSize', 14, 'FontWeight', 'bold');
+fprintf('\n');
+
+%% 10. TEST 7 - BATCH PROCESSING (3 Color Images)
+fprintf('10. TEST 7: BATCH PROCESSING - 3 COLOR IMAGES\n');
+
+colorImages = {imgColor1, imgColor2, imgColor3};
+colorNames = {'Color 1', 'Color 2', 'Color 3'};
+
+figure('Name', 'Test 7: Batch Color Processing', 'Position', [50 50 1400 900]);
+
 for i = 1:length(colorImages)
     img = colorImages{i};
     [noisy, ~] = addNoise(img, 'gaussian', 0, 0.01);
-    
-    smoothedSpatial = spatialSmoothing(noisy, 'gaussian', 5, 1.0);
-    smoothedFreq = frequencySmoothing(noisy, 'GLPF', 40);
-    
-    metricsSpatial = evaluateQuality(img, smoothedSpatial, noisy);
-    metricsFreq = evaluateQuality(img, smoothedFreq, noisy);
-    
-    fprintf('  Image %d - Spatial PSNR: %.2f, Frequency PSNR: %.2f\n', ...
-        i, metricsSpatial.PSNR, metricsFreq.PSNR);
+
+    [smoothed_spatial, ~] = gaussianFilter(noisy, 5, 1.0);
+    [smoothed_freq, ~, ~] = glpf(noisy, D0, usePadding);
+
+    % Original
+    subplot(3, 4, (i-1)*4 + 1);
+    imshow(img);
+    if i == 1, title('Original'); else, title(''); end
+    ylabel(colorNames{i}, 'FontWeight', 'bold');
+
+    % Noisy
+    subplot(3, 4, (i-1)*4 + 2);
+    imshow(noisy);
+    if i == 1, title('Noisy'); else, title(''); end
+
+    % Spatial
+    subplot(3, 4, (i-1)*4 + 3);
+    imshow(smoothed_spatial);
+    if i == 1, title('Gaussian Filter'); else, title(''); end
+
+    % Frequency
+    subplot(3, 4, (i-1)*4 + 4);
+    imshow(smoothed_freq);
+    if i == 1, title('GLPF'); else, title(''); end
+
+    fprintf('   %s: Processed\n', colorNames{i});
+end
+
+sgtitle('Batch Processing: 3 Color Images', 'FontSize', 14, 'FontWeight', 'bold');
+fprintf('\n');
+
+%% 11. TEST 8 - EXTRA IMAGES
+fprintf('11. TEST 8: EXTRA IMAGES (Grayscale + Color)\n');
+
+figure('Name', 'Test 8: Extra Images', 'Position', [50 50 1400 500]);
+
+% Extra grayscale
+[noisyGrayEx, ~] = addNoise(imgGrayExtra, 'gaussian', 0, 0.01);
+[smoothGrayEx, ~] = gaussianFilter(noisyGrayEx, 5, 1.0);
+[glpfGrayEx, ~, ~] = glpf(noisyGrayEx, D0, usePadding);
+
+subplot(2, 4, 1);
+imshow(imgGrayExtra);
+title('Extra Grayscale - Original');
+
+subplot(2, 4, 2);
+imshow(noisyGrayEx);
+title('Noisy');
+
+subplot(2, 4, 3);
+imshow(smoothGrayEx);
+title('Gaussian Filter');
+
+subplot(2, 4, 4);
+imshow(glpfGrayEx);
+title('GLPF');
+
+% Extra color
+[noisyColorEx, ~] = addNoise(imgColorExtra, 'gaussian', 0, 0.01);
+[smoothColorEx, ~] = gaussianFilter(noisyColorEx, 5, 1.0);
+[glpfColorEx, ~, ~] = glpf(noisyColorEx, D0, usePadding);
+
+subplot(2, 4, 5);
+imshow(imgColorExtra);
+title('Extra Color - Original');
+
+subplot(2, 4, 6);
+imshow(noisyColorEx);
+title('Noisy');
+
+subplot(2, 4, 7);
+imshow(smoothColorEx);
+title('Gaussian Filter');
+
+subplot(2, 4, 8);
+imshow(glpfColorEx);
+title('GLPF');
+
+sgtitle('Extra Images Processing', 'FontSize', 14, 'FontWeight', 'bold');
+fprintf('   Extra images processed\n\n');
+
+%% 12. TEST 9 - COMPARISON 
+fprintf('12. TEST 9: COMPARISON\n');
+
+figure('Name', 'Test 9: Comparison', 'Position', [50 50 1400 600]);
+
+[noisyTest, ~] = addNoise(imgGray1, 'gaussian', 0, 0.01);
+
+[mean_res, ~] = meanFilter(noisyTest, 5);
+[gauss_res, ~] = gaussianFilter(noisyTest, 5, 1.0);
+[ilpf_res, ~, ~] = ilpf(noisyTest, D0, usePadding);
+[glpf_res, ~, ~] = glpf(noisyTest, D0, usePadding);
+[blpf_res, ~, ~] = blpf(noisyTest, D0, n_butter, usePadding);
+
+subplot(2, 4, 1);
+imshow(imgGray1);
+title('Original');
+
+subplot(2, 4, 2);
+imshow(noisyTest);
+title('Noisy');
+
+subplot(2, 4, 3);
+imshow(mean_res);
+title('Mean (Spatial)');
+
+subplot(2, 4, 4);
+imshow(gauss_res);
+title('Gaussian (Spatial)');
+
+subplot(2, 4, 5);
+text(0.5, 0.5, 'Domain Comparison', 'HorizontalAlignment', 'center', 'FontSize', 11);
+axis off;
+
+subplot(2, 4, 6);
+imshow(ilpf_res);
+title('ILPF (Frequency)');
+
+subplot(2, 4, 7);
+imshow(glpf_res);
+title('GLPF (Frequency)');
+
+subplot(2, 4, 8);
+imshow(blpf_res);
+title('BLPF (Frequency)');
+
+sgtitle('Comparison: All Smoothing Methods', 'FontSize', 14, 'FontWeight', 'bold');
+
+%% 13. SUMMARY
+fprintf('\n================================================================\n');
+fprintf('SUMMARY\n');
+fprintf('================================================================\n');
+fprintf('Images Tested:\n');
+fprintf('  - Grayscale: 3 required + 1 extra = 4 images\n');
+fprintf('  - Color: 3 required + 1 extra = 4 images\n');
+fprintf('  - Total: 8 images\n\n');
+fprintf('Methods Implemented:\n');
+fprintf('  SPATIAL DOMAIN (using Task 1 convolution):\n');
+fprintf('    - Mean Filter %dx%d\n', n_mean, n_mean);
+fprintf('    - Gaussian Filter %dx%d (sigma=%.1f)\n', n_gauss, n_gauss, sigma_gauss);
+fprintf('  FREQUENCY DOMAIN:\n');
+fprintf('    - ILPF (D0=%d)\n', D0);
+fprintf('    - GLPF (D0=%d)\n', D0);
+fprintf('    - BLPF (D0=%d, n=%d)\n', D0, n_butter);
+fprintf('\nWaktu Komputasi (Grayscale, single image):\n');
+fprintf('  Spatial:\n');
+fprintf('    - Mean: %.4fs\n', t_mean);
+fprintf('    - Gaussian: %.4fs\n', t_gauss);
+fprintf('  Frequency:\n');
+fprintf('    - ILPF: %.4fs\n', t_ilpf);
+fprintf('    - GLPF: %.4fs\n', t_glpf);
+fprintf('    - BLPF: %.4fs\n', t_blpf);
+fprintf('\nRinging Effect:\n');
+fprintf('  - ILPF: MENIMBULKAN ringing (transisi tajam)\n');
+fprintf('  - GLPF: TIDAK ADA ringing (transisi smooth)\n');
+fprintf('  - BLPF: Minimal ringing (transisi dapat dikontrol)\n');
+fprintf('================================================================\n\n');
+
+% Hitung jumlah figures
+allFigs = findall(0, 'Type', 'figure');
+numFigs = length(allFigs);
+fprintf('Program selesai! Total %d figures ditampilkan.\n', numFigs);
+
+%% Helper function
+function result = iif(condition, trueVal, falseVal)
+    if condition
+        result = trueVal;
+    else
+        result = falseVal;
+    end
 end

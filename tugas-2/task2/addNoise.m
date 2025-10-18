@@ -1,100 +1,68 @@
-function [noisyImage, noiseParams] = addNoise(image, noiseType, varargin)
-    img = im2double(image);
-    [M, N, channels] = size(img);
-    
-    noisyImage = zeros(size(img));
-    noiseParams = struct();
-    noiseParams.type = noiseType;
-    
+function [noisyImage, noiseParams] = addNoise(img, noiseType, varargin)
+% ADDNOISE - Menambahkan noise ke citra
+%
+% Syntax:
+%   [noisyImage, noiseParams] = addNoise(img, noiseType, params...)
+%
+% Input:
+%   img       - Citra input (grayscale atau RGB)
+%   noiseType - Jenis noise: 'gaussian', 'salt_pepper', 'speckle'
+%   varargin  - Parameter untuk noise:
+%               Gaussian: mean (default: 0), variance (default: 0.01)
+%               Salt & Pepper: density (default: 0.05)
+%               Speckle: variance (default: 0.04)
+%
+% Output:
+%   noisyImage   - Citra dengan noise
+%   noiseParams  - Parameter noise yang digunakan
+
+    img = im2double(img);
+
     switch lower(noiseType)
         case 'gaussian'
-            if length(varargin) >= 2
-                meanVal = varargin{1};
+            % Gaussian noise
+            if nargin >= 3
+                mean_val = varargin{1};
+            else
+                mean_val = 0;
+            end
+
+            if nargin >= 4
                 variance = varargin{2};
             else
-                meanVal = 0;
                 variance = 0.01;
             end
-            
-            noiseParams.mean = meanVal;
+
+            noisyImage = imnoise(img, 'gaussian', mean_val, variance);
+            noiseParams.type = 'gaussian';
+            noiseParams.mean = mean_val;
             noiseParams.variance = variance;
-            
-            for c = 1:channels
-                noise = meanVal + sqrt(variance) * randn(M, N);
-                noisyImage(:,:,c) = img(:,:,c) + noise;
-            end
-            
-        case {'salt_pepper', 'saltpepper', 'salt&pepper'}
-            if length(varargin) >= 1
+
+        case 'salt_pepper'
+            % Salt and Pepper noise
+            if nargin >= 3
                 density = varargin{1};
             else
                 density = 0.05;
             end
-            
+
+            noisyImage = imnoise(img, 'salt & pepper', density);
+            noiseParams.type = 'salt_pepper';
             noiseParams.density = density;
-            
-            for c = 1:channels
-                temp = img(:,:,c);
-                
-                numSalt = round(density * M * N / 2);
-                saltCoords = randperm(M*N, numSalt);
-                temp(saltCoords) = 1;
-                
-                numPepper = round(density * M * N / 2);
-                pepperCoords = randperm(M*N, numPepper);
-                temp(pepperCoords) = 0;
-                
-                noisyImage(:,:,c) = temp;
-            end
-            
+
         case 'speckle'
-            if length(varargin) >= 1
+            % Speckle noise
+            if nargin >= 3
                 variance = varargin{1};
             else
                 variance = 0.04;
             end
-            
+
+            noisyImage = imnoise(img, 'speckle', variance);
+            noiseParams.type = 'speckle';
             noiseParams.variance = variance;
-            
-            for c = 1:channels
-                noise = sqrt(variance) * randn(M, N);
-                noisyImage(:,:,c) = img(:,:,c) + img(:,:,c) .* noise;
-            end
-            
-        case 'poisson'
-            noiseParams.info = 'Poisson noise based on image intensity';
-            
-            for c = 1:channels
-                scaled = img(:,:,c) * 255;
-                noisyImage(:,:,c) = imnoise(uint8(scaled), 'poisson');
-            end
-            noisyImage = im2double(noisyImage);
-            
-        case 'uniform'
-            if length(varargin) >= 2
-                a = varargin{1};
-                b = varargin{2};
-            else
-                a = -0.1;
-                b = 0.1;
-            end
-            
-            noiseParams.a = a;
-            noiseParams.b = b;
-            
-            for c = 1:channels
-                noise = a + (b-a) * rand(M, N);
-                noisyImage(:,:,c) = img(:,:,c) + noise;
-            end
-            
+
         otherwise
-            error('Tipe noise tidak dikenali');
-    end
-    
-    noisyImage = max(0, min(1, noisyImage));
-    if isa(image, 'uint8')
-        noisyImage = im2uint8(noisyImage);
-    elseif isa(image, 'uint16')
-        noisyImage = im2uint16(noisyImage);
+            error('Noise type tidak valid. Gunakan: gaussian, salt_pepper, atau speckle');
     end
 end
