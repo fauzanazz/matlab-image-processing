@@ -447,7 +447,7 @@ function createTask2Tab(parent)
     spatialFilterLabel = uilabel(controlPanel, 'Position', [10, 260, 100, 22], 'Text', 'Spatial Filter:');
     spatialFilterLabel.Tag = 'SpatialControl';
     spatialFilterType = uidropdown(controlPanel, 'Position', [10, 230, 260, 22], ...
-                                  'Items', {'Mean', 'Gaussian', 'Median', 'Bilateral'}, ...
+                                  'Items', {'Mean', 'Gaussian'}, ...
                                   'Value', 'Gaussian');
     spatialFilterType.Tag = 'SpatialControl';
 
@@ -637,20 +637,14 @@ function applyFilterTask2(parent, domainType, spatialFilterType, freqFilterType,
     try
         tic;
         if strcmp(domainType.Value, 'Spatial')
-            % Spatial domain filtering
+            % Spatial domain filtering (using task2 functions)
             switch spatialFilterType.Value
                 case 'Mean'
-                    smoothedImg = spatialSmoothing(img, 'mean', filterSize.Value);
+                    [smoothedImg, ~] = meanFilter(img, filterSize.Value);
                     filterDesc = sprintf('Mean %dx%d', filterSize.Value, filterSize.Value);
                 case 'Gaussian'
-                    smoothedImg = spatialSmoothing(img, 'gaussian', filterSize.Value, sigmaParam.Value);
+                    [smoothedImg, ~] = gaussianFilter(img, filterSize.Value, sigmaParam.Value);
                     filterDesc = sprintf('Gaussian %dx%d (σ=%.1f)', filterSize.Value, filterSize.Value, sigmaParam.Value);
-                case 'Median'
-                    smoothedImg = spatialSmoothing(img, 'median', filterSize.Value);
-                    filterDesc = sprintf('Median %dx%d', filterSize.Value, filterSize.Value);
-                case 'Bilateral'
-                    smoothedImg = spatialSmoothing(img, 'bilateral', filterSize.Value, sigmaParam.Value);
-                    filterDesc = sprintf('Bilateral %dx%d (σ=%.1f)', filterSize.Value, filterSize.Value, sigmaParam.Value);
             end
 
             % Clear spectrum displays for spatial domain
@@ -673,19 +667,30 @@ function applyFilterTask2(parent, domainType, spatialFilterType, freqFilterType,
             ax5.YTick = [];
 
         else
-            % Frequency domain filtering (same approach as main_smoothing.m)
-            [smoothedImg, ~, spectrum] = frequencySmoothing(img, freqFilterType.Value, cutoffFreq.Value, filterOrder.Value);
-            filterDesc = sprintf('%s D0=%d n=%d', freqFilterType.Value, cutoffFreq.Value, filterOrder.Value);
+            % Frequency domain filtering (using task2 functions: ilpf, glpf, blpf)
+            usePadding = true; % Use 2x padding as in main_smoothing.m
+
+            switch freqFilterType.Value
+                case 'ILPF'
+                    [smoothedImg, H_filter, spectrum_data] = ilpf(img, cutoffFreq.Value, usePadding);
+                    filterDesc = sprintf('ILPF D0=%d', cutoffFreq.Value);
+                case 'GLPF'
+                    [smoothedImg, H_filter, spectrum_data] = glpf(img, cutoffFreq.Value, usePadding);
+                    filterDesc = sprintf('GLPF D0=%d', cutoffFreq.Value);
+                case 'BLPF'
+                    [smoothedImg, H_filter, spectrum_data] = blpf(img, cutoffFreq.Value, filterOrder.Value, usePadding);
+                    filterDesc = sprintf('BLPF D0=%d n=%d', cutoffFreq.Value, filterOrder.Value);
+            end
 
             % Display original spectrum
             ax4 = findobj(parent, 'Tag', 'OriginalSpectrumAxes');
-            imshow(spectrum.original, [], 'Parent', ax4);
+            imshow(spectrum_data.original, [], 'Parent', ax4);
             title(ax4, 'Original FFT Spectrum');
             colormap(ax4, 'jet');
 
             % Display filtered spectrum
             ax5 = findobj(parent, 'Tag', 'FilteredSpectrumAxes');
-            imshow(spectrum.filtered, [], 'Parent', ax5);
+            imshow(spectrum_data.filtered, [], 'Parent', ax5);
             title(ax5, sprintf('Filtered Spectrum (%s)', freqFilterType.Value));
             colormap(ax5, 'jet');
         end
@@ -1001,7 +1006,23 @@ function applyFilterTask3(parent, filterType, cutoffFreq, filterOrder, boostFact
 
     try
         tic;
-        [filteredImg, filterUsed, spectrum] = frequencyHighPass(img, filterType.Value, cutoffFreq.Value, filterOrder.Value, boostFactor.Value);
+        % Apply high-pass filter using task3 functions (ihpf, ghpf, bhpf)
+        usePadding = true; % Use 2x padding as in main_highpass.m
+
+        switch filterType.Value
+            case 'IHPF'
+                [filteredImg, filterUsed, spectrum] = ihpf(img, cutoffFreq.Value, usePadding);
+            case 'GHPF'
+                [filteredImg, filterUsed, spectrum] = ghpf(img, cutoffFreq.Value, usePadding);
+            case 'BHPF'
+                [filteredImg, filterUsed, spectrum] = bhpf(img, cutoffFreq.Value, filterOrder.Value, usePadding);
+        end
+
+        % Apply boost factor if needed
+        if boostFactor.Value ~= 1.0
+            filteredImg = im2uint8(mat2gray(im2double(filteredImg) * boostFactor.Value));
+        end
+
         elapsedTime = toc;
 
         parent.UserData.filteredImage = filteredImg;
