@@ -1,534 +1,491 @@
-%% MAIN_HIGHPASS 
+%% MAIN_HIGHPASS - High-Pass Filtering dalam Ranah Frekuensi
+%
+% Fitur:
+%   - IHPF (Ideal High-Pass Filter)
+%   - GHPF (Gaussian High-Pass Filter)
+%   - BHPF (Butterworth High-Pass Filter)
+%   - Support citra grayscale dan RGB
+%   - Demonstrasi ringing effect (Slide 24-25)
+%   - Visualisasi 3D mesh (Slide 21, 33, 39)
 clear; clc; close all;
 
+fprintf('================================================================\n');
+fprintf('    HIGH-PASS FILTERING DALAM RANAH FREKUENSI\n');
+fprintf('    IHPF, GHPF, dan BHPF\n');
+fprintf('================================================================\n\n');
+
 %% 1. SETUP
-fprintf('=== HIGH-PASS FILTERING ===\n');
-fprintf('Frequency Domain: IHPF, GHPF, BHPF\n\n');
+fprintf('1. SETUP\n');
 addpath(genpath('.'));
 
 %% 2. LOAD TEST IMAGES
-fprintf('Loading test images...\n');
+fprintf('2. LOAD TEST IMAGES\n');
 
+% Grayscale images
 try
-    imgGray1 = imread('cat.jpg'); 
-    if size(imgGray1, 3) == 3
-        imgGray1 = rgb2gray(imgGray1);
-    end
-    fprintf('  ✓ Grayscale 1: cat.jpg\n');
-catch
     imgGray1 = imread('cameraman.tif');
-    fprintf('  ! Grayscale 1: cameraman.tif (fallback)\n');
-end
-
-try
-    imgGray2 = imread('building.jpg'); 
-    if size(imgGray2, 3) == 3
-        imgGray2 = rgb2gray(imgGray2);
+    fprintf('   Grayscale 1: cameraman.tif\n');
+catch
+    try
+        imgGray1 = imread('../task1/test_images/gray1.jpeg');
+        fprintf('   Grayscale 1: gray1.jpeg\n');
+    catch
+        imgGray1 = uint8(rand(256,256)*255);
+        fprintf('   Grayscale 1: random image\n');
     end
-    fprintf('Grayscale 2: building.jpg\n');
-catch
+end
+
+try
     imgGray2 = imread('pout.tif');
-    fprintf('Grayscale 2: pout.tif (fallback)\n');
+    fprintf('   Grayscale 2: pout.tif\n');
+catch
+    imgGray2 = uint8(rand(256,256)*255);
+    fprintf('   Grayscale 2: random image\n');
 end
 
+% Color images
 try
-    imgGray3 = imread('circuit.tif');
-    fprintf('Grayscale 3: circuit.tif\n');
-catch
-    imgGray3 = imread('rice.png');
-    fprintf('Grayscale 3: rice.png (fallback)\n');
-end
-
-try
-    imgColor1 = imread('circuit_board.jpg'); % 
-    fprintf('Color 1: circuit_board.jpg\n');
-catch
     imgColor1 = imread('peppers.png');
-    fprintf('Color 1: peppers.png (fallback)\n');
+    fprintf('   Color 1: peppers.png\n');
+catch
+    try
+        imgColor1 = imread('../task1/test_images/color1.jpeg');
+        fprintf('   Color 1: color1.jpeg\n');
+    catch
+        imgColor1 = uint8(rand(256,256,3)*255);
+        fprintf('   Color 1: random image\n');
+    end
 end
 
 try
     imgColor2 = imread('autumn.tif');
-    fprintf('Color 2: autumn.tif\n');
+    fprintf('   Color 2: autumn.tif\n');
 catch
     imgColor2 = uint8(rand(256,256,3)*255);
-    fprintf('Color 2: random image (fallback)\n');
+    fprintf('   Color 2: random image\n');
 end
 
-try
-    imgColor3 = imread('peppers.png');
-    fprintf('Color 3: peppers.png\n');
-catch
-    imgColor3 = uint8(rand(256,256,3)*255);
-    fprintf('Color 3: random image (fallback)\n');
-end
-
-%% 3. TEST 1 - BASIC HIGH-PASS FILTERING (GRAYSCALE)
-fprintf('\n=== TEST 1: BASIC HIGH-PASS FILTERING - GRAYSCALE ===\n');
-
-cutoffFreqs = [20, 40, 60];
-
-figure('Name', 'High-Pass Filtering - Grayscale', 'Position', [50 50 1400 900]);
-
-subplot(4, 4, 1);
-imshow(imgGray1); title('Original');
-
-idx = 2;
-for D0 = cutoffFreqs
-    % IHPF
-    filtered = frequencyHighPass(imgGray1, 'IHPF', D0);
-    subplot(4, 4, idx);
-    imshow(filtered);
-    title(sprintf('IHPF D0=%d', D0));
-    idx = idx + 1;
-end
-
-idx = 6;
-for D0 = cutoffFreqs
-    % GHPF
-    filtered = frequencyHighPass(imgGray1, 'GHPF', D0);
-    subplot(4, 4, idx);
-    imshow(filtered);
-    title(sprintf('GHPF D0=%d', D0));
-    idx = idx + 1;
-end
-
-idx = 10;
-for D0 = cutoffFreqs
-    % BHPF
-    filtered = frequencyHighPass(imgGray1, 'BHPF', D0, 2);
-    subplot(4, 4, idx);
-    imshow(filtered);
-    title(sprintf('BHPF D0=%d n=2', D0));
-    idx = idx + 1;
-end
-
-subplot(4, 4, 14);
-[M, N] = size(imgGray1);
-H_IHPF = createHighPassFilter(M, N, 'IHPF', 40);
-H_GHPF = createHighPassFilter(M, N, 'GHPF', 40);
-H_BHPF = createHighPassFilter(M, N, 'BHPF', 40, 2);
-centerRow = round(M/2);
-plot(H_IHPF(centerRow,:), 'b-', 'LineWidth', 2); hold on;
-plot(H_GHPF(centerRow,:), 'r-', 'LineWidth', 2);
-plot(H_BHPF(centerRow,:), 'g-', 'LineWidth', 2);
-legend('IHPF', 'GHPF', 'BHPF');
-title('Filter Cross-Sections');
-xlabel('Frequency'); ylabel('H(u,v)');
-grid on;
-
-%% 4. TEST 2 - FREQUENCY SPECTRUM ANALYSIS
-fprintf('\n=== TEST 2: FREQUENCY SPECTRUM ANALYSIS ===\n');
-
-[filtered_IHPF, ~, spectrum_IHPF] = frequencyHighPass(imgGray1, 'IHPF', 40);
-[filtered_GHPF, ~, spectrum_GHPF] = frequencyHighPass(imgGray1, 'GHPF', 40);
-[filtered_BHPF, ~, spectrum_BHPF] = frequencyHighPass(imgGray1, 'BHPF', 40, 2);
-
-figure('Name', 'Frequency Spectrum Analysis', 'Position', [50 50 1400 800]);
-
-% Original
-subplot(3, 5, 1);
-imshow(imgGray1); title('Original Image');
-
-subplot(3, 5, 2);
-imshow(spectrum_IHPF.original, []); title('Original Spectrum');
-colormap(gca, 'jet'); colorbar;
-
-% IHPF
-subplot(3, 5, 3);
-imshow(spectrum_IHPF.filter, []); title('IHPF Filter');
-colormap(gca, 'jet'); colorbar;
-
-subplot(3, 5, 4);
-imshow(spectrum_IHPF.filtered, []); title('Filtered Spectrum');
-colormap(gca, 'jet'); colorbar;
-
-subplot(3, 5, 5);
-imshow(filtered_IHPF); title('IHPF Result');
-
-% GHPF
-subplot(3, 5, 8);
-imshow(spectrum_GHPF.filter, []); title('GHPF Filter');
-colormap(gca, 'jet'); colorbar;
-
-subplot(3, 5, 9);
-imshow(spectrum_GHPF.filtered, []); title('Filtered Spectrum');
-colormap(gca, 'jet'); colorbar;
-
-subplot(3, 5, 10);
-imshow(filtered_GHPF); title('GHPF Result');
-
-% BHPF
-subplot(3, 5, 13);
-imshow(spectrum_BHPF.filter, []); title('BHPF Filter');
-colormap(gca, 'jet'); colorbar;
-
-subplot(3, 5, 14);
-imshow(spectrum_BHPF.filtered, []); title('Filtered Spectrum');
-colormap(gca, 'jet'); colorbar;
-
-subplot(3, 5, 15);
-imshow(filtered_BHPF); title('BHPF Result');
-
-%% 5. TEST 3 - EDGE DETECTION WITH HPF
-fprintf('\n=== TEST 3: EDGE DETECTION USING HPF ===\n');
-
-figure('Name', 'Edge Detection - HPF', 'Position', [50 50 1400 600]);
-
-subplot(2, 4, 1);
-imshow(imgGray2); title('Original');
-
-methods = {'IHPF', 'GHPF', 'BHPF'};
-D0 = 30;
-
-for i = 1:length(methods)
-    [edges, magnitude, ~] = edgeDetectionFrequency(imgGray2, methods{i}, D0, 0.1);
-    
-    subplot(2, 4, i+1);
-    imshow(magnitude, []); 
-    title(sprintf('%s Magnitude', methods{i}));
-    
-    subplot(2, 4, i+5);
-    imshow(edges); 
-    title(sprintf('%s Edges', methods{i}));
-end
-
-subplot(2, 4, 8);
-edges_canny = edge(imgGray2, 'canny');
-imshow(edges_canny);
-title('Canny (Spatial)');
-
-%% 6. TEST 4 - IMAGE SHARPENING
-fprintf('\n=== TEST 4: IMAGE SHARPENING ===\n');
-
-blurred = imgaussfilt(imgGray3, 2);
-
-figure('Name', 'Image Sharpening', 'Position', [50 50 1400 800]);
-
-subplot(3, 4, 1);
-imshow(imgGray3); title('Original');
-
-subplot(3, 4, 2);
-imshow(blurred); title('Blurred (sigma=2)');
-
-idx = 3;
-sharpenMethods = {'IHPF', 'GHPF', 'BHPF', 'unsharp'};
-cutoffs = [30, 30, 30, 40];
-
-for i = 1:length(sharpenMethods)
-    [sharpened, mask] = sharpenImage(blurred, sharpenMethods{i}, cutoffs(i), 1.0, 0.7);
-    
-    subplot(3, 4, idx);
-    imshow(sharpened);
-    title(sprintf('%s Sharpened', sharpenMethods{i}));
-    idx = idx + 1;
-    
-    subplot(3, 4, idx);
-    imshow(mask, []);
-    title(sprintf('%s Mask', sharpenMethods{i}));
-    idx = idx + 1;
-end
-
-subplot(3, 4, 11);
-[boosted, ~] = sharpenImage(blurred, 'GHPF', 30, 1.5, 1.0);
-imshow(boosted);
-title('High-Boost (k=1.5)');
-
-subplot(3, 4, 12);
-diff = double(boosted) - double(blurred);
-imshow(diff, []);
-title('Enhancement Difference');
-colormap(gca, 'jet'); colorbar;
-
-%% 7. TEST 5 - COLOR IMAGE HPF
-fprintf('\n=== TEST 5: COLOR IMAGE HIGH-PASS FILTERING ===\n');
-
-figure('Name', 'Color Image HPF', 'Position', [50 50 1400 800]);
-
-subplot(3, 4, 1);
-imshow(imgColor1); title('Original Color');
-
-D0_values = [20, 40, 60];
-idx = 2;
-
-for D0 = D0_values
-    % GHPF on color
-    filtered = frequencyHighPass(imgColor1, 'GHPF', D0);
-    subplot(3, 4, idx);
-    imshow(filtered);
-    title(sprintf('GHPF D0=%d', D0));
-    idx = idx + 1;
-end
-
-idx = 5;
-for D0 = D0_values
-    % BHPF on color
-    filtered = frequencyHighPass(imgColor1, 'BHPF', D0, 2);
-    subplot(3, 4, idx);
-    imshow(filtered);
-    title(sprintf('BHPF D0=%d', D0));
-    idx = idx + 1;
-end
-
-% Color edge detection
-subplot(3, 4, 9);
-grayVersion = rgb2gray(imgColor1);
-edges = edgeDetectionFrequency(grayVersion, 'GHPF', 30, 0.12);
-imshow(edges);
-title('Edge Detection');
-
-% Per-channel HPF
-subplot(3, 4, 10);
-R = frequencyHighPass(imgColor1(:,:,1), 'GHPF', 40);
-imshow(R); title('Red Channel HPF');
-
-subplot(3, 4, 11);
-G = frequencyHighPass(imgColor1(:,:,2), 'GHPF', 40);
-imshow(G); title('Green Channel HPF');
-
-subplot(3, 4, 12);
-B = frequencyHighPass(imgColor1(:,:,3), 'GHPF', 40);
-imshow(B); title('Blue Channel HPF');
-
-%% 8. TEST 6 - COMPREHENSIVE COMPARISON
-fprintf('\n=== TEST 6: COMPREHENSIVE COMPARISON ===\n');
-
-cutoffFreqsTest = [20, 40, 60];
-results = compareFilters(imgGray1, cutoffFreqsTest, true);
-
-%% 9. TEST 7 - FILTER VISUALIZATION 3D
-fprintf('\n=== TEST 7: 3D FILTER VISUALIZATION ===\n');
-
-[M, N] = size(imgGray1);
-D0 = 40;
-
-% Create filters
-H_IHPF = createHighPassFilter(M, N, 'IHPF', D0);
-H_GHPF = createHighPassFilter(M, N, 'GHPF', D0);
-H_BHPF = createHighPassFilter(M, N, 'BHPF', D0, 2);
-
-figure('Name', '3D Filter Visualization', 'Position', [50 50 1400 400]);
-
-% IHPF 3D
-subplot(1, 3, 1);
-[X, Y] = meshgrid(1:10:N, 1:10:M);
-Z = H_IHPF(1:10:M, 1:10:N);
-surf(X, Y, Z, 'EdgeColor', 'none');
-title('IHPF 3D View');
-xlabel('u'); ylabel('v'); zlabel('H(u,v)');
-colormap(gca, 'jet'); colorbar;
-view(45, 30);
-
-% GHPF 3D
-subplot(1, 3, 2);
-Z = H_GHPF(1:10:M, 1:10:N);
-surf(X, Y, Z, 'EdgeColor', 'none');
-title('GHPF 3D View');
-xlabel('u'); ylabel('v'); zlabel('H(u,v)');
-colormap(gca, 'jet'); colorbar;
-view(45, 30);
-
-% BHPF 3D
-subplot(1, 3, 3);
-Z = H_BHPF(1:10:M, 1:10:N);
-surf(X, Y, Z, 'EdgeColor', 'none');
-title('BHPF 3D View');
-xlabel('u'); ylabel('v'); zlabel('H(u,v)');
-colormap(gca, 'jet'); colorbar;
-view(45, 30);
-
-%% 10. TEST 8 - PARAMETER SENSITIVITY
-fprintf('\n=== TEST 8: PARAMETER SENSITIVITY ===\n');
-
-% Effect of cutoff frequency
-cutoffRange = 10:10:100;
-edge_ratios_IHPF = zeros(size(cutoffRange));
-edge_ratios_GHPF = zeros(size(cutoffRange));
-edge_ratios_BHPF = zeros(size(cutoffRange));
-contrast_IHPF = zeros(size(cutoffRange));
-contrast_GHPF = zeros(size(cutoffRange));
-contrast_BHPF = zeros(size(cutoffRange));
-
-fprintf('Testing cutoff frequencies: ');
-for i = 1:length(cutoffRange)
-    D0 = cutoffRange(i);
-    fprintf('%d ', D0);
-    
-    % IHPF
-    filtered = frequencyHighPass(imgGray1, 'IHPF', D0);
-    edges = edge(filtered, 'canny');
-    edge_ratios_IHPF(i) = sum(edges(:)) / numel(edges);
-    contrast_IHPF(i) = std(double(filtered(:)));
-    
-    % GHPF
-    filtered = frequencyHighPass(imgGray1, 'GHPF', D0);
-    edges = edge(filtered, 'canny');
-    edge_ratios_GHPF(i) = sum(edges(:)) / numel(edges);
-    contrast_GHPF(i) = std(double(filtered(:)));
-    
-    % BHPF
-    filtered = frequencyHighPass(imgGray1, 'BHPF', D0, 2);
-    edges = edge(filtered, 'canny');
-    edge_ratios_BHPF(i) = sum(edges(:)) / numel(edges);
-    contrast_BHPF(i) = std(double(filtered(:)));
-end
 fprintf('\n');
 
-figure('Name', 'Parameter Sensitivity', 'Position', [50 50 1200 500]);
+%% 3. PARAMETER FILTERING
+fprintf('3. PARAMETER FILTERING\n');
 
-subplot(1, 2, 1);
-plot(cutoffRange, edge_ratios_IHPF * 100, 'b-o', 'LineWidth', 2); hold on;
-plot(cutoffRange, edge_ratios_GHPF * 100, 'r-s', 'LineWidth', 2);
-plot(cutoffRange, edge_ratios_BHPF * 100, 'g-d', 'LineWidth', 2);
-xlabel('Cutoff Frequency D0');
-ylabel('Edge Ratio (%)');
-title('Edge Detection vs Cutoff Frequency');
-legend('IHPF', 'GHPF', 'BHPF');
-grid on;
+D0 = 50;              
+n_butterworth = 2;     
+usePadding = true;     
 
-subplot(1, 2, 2);
-plot(cutoffRange, contrast_IHPF, 'b-o', 'LineWidth', 2); hold on;
-plot(cutoffRange, contrast_GHPF, 'r-s', 'LineWidth', 2);
-plot(cutoffRange, contrast_BHPF, 'g-d', 'LineWidth', 2);
-xlabel('Cutoff Frequency D0');
-ylabel('Output Contrast (Std Dev)');
-title('Output Contrast vs Cutoff Frequency');
-legend('IHPF', 'GHPF', 'BHPF');
-grid on;
+fprintf('   Cutoff frequency (D0): %d\n', D0);
+fprintf('   Butterworth order (n): %d\n', n_butterworth);
+fprintf('   Padding: %s\n\n', iif(usePadding, '2x (P=2M, Q=2N)', 'No padding'));
 
-%% 11. TEST 9 - BUTTERWORTH ORDER EFFECT
-fprintf('\n=== TEST 9: BUTTERWORTH ORDER EFFECT ===\n');
+%% 4. TEST 1 - BASIC HPF PADA GRAYSCALE
+fprintf('4. TEST 1: BASIC HIGH-PASS FILTERING - GRAYSCALE\n');
+fprintf('   Formula:\n');
+fprintf('   - IHPF: H(u,v) = 0 jika D<=D0, 1 jika D>D0 (Slide 49)\n');
+fprintf('   - GHPF: H(u,v) = 1 - exp(-D^2/(2*D0^2)) (Slide 51)\n');
+fprintf('   - BHPF: H(u,v) = 1/(1 + [D0/D]^(2n)) (Slide 51)\n\n');
 
-orders = [1, 2, 4, 8];
-D0 = 40;
+fprintf('   Applying IHPF... ');
+tic; [ihpf_gray1, H_ihpf, spectrum_ihpf] = ihpf(imgGray1, D0, usePadding); time_ihpf = toc;
+fprintf('Done (%.4fs)\n', time_ihpf);
 
-figure('Name', 'Butterworth Order Effect', 'Position', [50 50 1400 700]);
+fprintf('   Applying GHPF... ');
+tic; [ghpf_gray1, H_ghpf, spectrum_ghpf] = ghpf(imgGray1, D0, usePadding); time_ghpf = toc;
+fprintf('Done (%.4fs)\n', time_ghpf);
 
-subplot(2, length(orders)+1, 1);
-imshow(imgGray1); title('Original');
+fprintf('   Applying BHPF... ');
+tic; [bhpf_gray1, H_bhpf, spectrum_bhpf] = bhpf(imgGray1, D0, n_butterworth, usePadding); time_bhpf = toc;
+fprintf('Done (%.4fs)\n\n', time_bhpf);
 
-for i = 1:length(orders)
-    n = orders(i);
+figure('Name', 'Test 1: HPF Grayscale - Basic Results', 'Position', [50 50 1400 900]);
 
-    [M, N] = size(imgGray1);
-    H = createHighPassFilter(M, N, 'BHPF', D0, n);
-    
-    filtered = frequencyHighPass(imgGray1, 'BHPF', D0, n);
-    
-    subplot(2, length(orders)+1, i+1);
-    imshow(H, []); 
-    title(sprintf('BHPF n=%d', n));
-    colorbar;
-    
-    subplot(2, length(orders)+1, length(orders)+1 + i+1);
-    imshow(filtered);
-    title(sprintf('Result n=%d', n));
-end
+subplot(3, 4, 1);
+imshow(imgGray1);
+title('Original Grayscale');
 
-subplot(2, length(orders)+1, length(orders)+1);
-hold on;
-colors = {'b', 'r', 'g', 'm'};
-for i = 1:length(orders)
-    H = createHighPassFilter(M, N, 'BHPF', D0, orders(i));
-    centerRow = round(M/2);
-    plot(H(centerRow, :), colors{i}, 'LineWidth', 2);
-end
-legend(arrayfun(@(x) sprintf('n=%d', x), orders, 'UniformOutput', false));
+subplot(3, 4, 2);
+imshow(ihpf_gray1);
+title(sprintf('IHPF D0=%d', D0));
+
+subplot(3, 4, 3);
+imshow(ghpf_gray1);
+title(sprintf('GHPF D0=%d', D0));
+
+subplot(3, 4, 4);
+imshow(bhpf_gray1);
+title(sprintf('BHPF D0=%d n=%d', D0, n_butterworth));
+
+subplot(3, 4, 5);
+text(0.5, 0.5, 'Filter H(u,v)', 'HorizontalAlignment', 'center', 'FontSize', 11, 'FontWeight', 'bold');
+axis off;
+
+subplot(3, 4, 6);
+imshow(H_ihpf);
+title('IHPF Filter');
+colorbar;
+
+subplot(3, 4, 7);
+imshow(H_ghpf);
+title('GHPF Filter');
+colorbar;
+
+subplot(3, 4, 8);
+imshow(H_bhpf);
+title('BHPF Filter');
+colorbar;
+
+subplot(3, 4, 9);
+imshow(log(1 + abs(fftshift(fft2(double(imgGray1))))), []);
+title('Original Spectrum');
+colormap(gca, 'jet');
+
+subplot(3, 4, 10);
+imshow(spectrum_ihpf.filtered, []);
+title('IHPF Spectrum');
+colormap(gca, 'jet');
+
+subplot(3, 4, 11);
+imshow(spectrum_ghpf.filtered, []);
+title('GHPF Spectrum');
+colormap(gca, 'jet');
+
+subplot(3, 4, 12);
+imshow(spectrum_bhpf.filtered, []);
+title('BHPF Spectrum');
+colormap(gca, 'jet');
+
+sgtitle('Test 1: High-Pass Filtering - Grayscale', 'FontSize', 14, 'FontWeight', 'bold');
+
+%% 5. TEST 2 - 3D FILTER VISUALIZATION 
+fprintf('5. TEST 2: 3D FILTER VISUALIZATION \n');
+fprintf('   Mesh plot untuk melihat karakteristik filter\n\n');
+
+figure('Name', 'Test 2: 3D Filter Visualization (mesh)', 'Position', [100 100 1400 400]);
+
+subplot(1, 3, 1);
+mesh(H_ihpf);
+title('IHPF - 3D View');
+xlabel('u'); ylabel('v'); zlabel('H(u,v)');
+colormap(gca, 'jet');
+view(45, 30);
+
+subplot(1, 3, 2);
+mesh(H_ghpf);
+title('GHPF - 3D View');
+xlabel('u'); ylabel('v'); zlabel('H(u,v)');
+colormap(gca, 'jet');
+view(45, 30);
+
+subplot(1, 3, 3);
+mesh(H_bhpf);
+title(sprintf('BHPF (n=%d) - 3D View', n_butterworth));
+xlabel('u'); ylabel('v'); zlabel('H(u,v)');
+colormap(gca, 'jet');
+view(45, 30);
+
+sgtitle('3D Filter Visualization (Slide 21, 33, 39)', 'FontSize', 12, 'FontWeight', 'bold');
+
+%% 6. TEST 3 - FILTER CROSS-SECTION (1D Profile)
+fprintf('6. TEST 3: FILTER CROSS-SECTION (1D Profile)\n');
+fprintf('   Menunjukkan karakteristik transisi filter\n\n');
+
+figure('Name', 'Test 3: Filter Cross-Section', 'Position', [100 100 1400 400]);
+
+centerRow = round(size(H_ihpf, 1) / 2);
+
+subplot(1, 4, 1);
+plot(H_ihpf(centerRow, :), 'b-', 'LineWidth', 2);
+title('IHPF Profile');
 xlabel('Frequency'); ylabel('H(u,v)');
-title('Filter Profiles');
-grid on;
+grid on; ylim([0 1.1]);
 
-%% 12. TEST 10 - FREQUENCY ANALYSIS
-fprintf('\n=== TEST 10: DETAILED FREQUENCY ANALYSIS ===\n');
+subplot(1, 4, 2);
+plot(H_ghpf(centerRow, :), 'r-', 'LineWidth', 2);
+title('GHPF Profile');
+xlabel('Frequency'); ylabel('H(u,v)');
+grid on; ylim([0 1.1]);
 
-results_analysis = analyzeFrequency(imgGray1, true);
+subplot(1, 4, 3);
+plot(H_bhpf(centerRow, :), 'g-', 'LineWidth', 2);
+title(sprintf('BHPF (n=%d) Profile', n_butterworth));
+xlabel('Frequency'); ylabel('H(u,v)');
+grid on; ylim([0 1.1]);
 
-fprintf('Frequency Analysis Results:\n');
-fprintf('  DC Magnitude: %.2f\n', results_analysis.DCMagnitude);
-fprintf('  Total Energy: %.2e\n', results_analysis.totalEnergy);
-fprintf('  Low Freq Energy: %.2e\n', results_analysis.lowFreqEnergy);
-fprintf('  High Freq Energy: %.2e\n', results_analysis.highFreqEnergy);
-fprintf('  Energy Ratio (Low/High): %.2f\n', results_analysis.energyRatio);
+subplot(1, 4, 4);
+plot(H_ihpf(centerRow, :), 'b-', 'LineWidth', 2.5); hold on;
+plot(H_ghpf(centerRow, :), 'r-', 'LineWidth', 2.5);
+plot(H_bhpf(centerRow, :), 'g-', 'LineWidth', 2.5);
+legend('IHPF (Tajam)', 'GHPF (Smooth)', sprintf('BHPF (n=%d)', n_butterworth), 'Location', 'best');
+title('Combined Comparison');
+xlabel('Frequency'); ylabel('H(u,v)');
+grid on; ylim([0 1.1]);
 
-%% 13. TEST 11 - BATCH PROCESSING ALL IMAGES
-fprintf('\n=== TEST 11: BATCH PROCESSING ===\n');
+sgtitle('Filter Cross-Section - Karakteristik Transisi', 'FontSize', 12);
 
-grayImages = {imgGray1, imgGray2, imgGray3};
-colorImages = {imgColor1, imgColor2, imgColor3};
-D0 = 40;
+%% 7. TEST 4 - RINGING EFFECT DEMONSTRATION 
+fprintf('7. TEST 4: RINGING EFFECT DEMONSTRATION\n');
+fprintf('   IHPF menimbulkan ringing, GHPF tidak\n\n');
 
-fprintf('Processing grayscale images with GHPF (D0=%d)...\n', D0);
-figure('Name', 'Batch Processing - Grayscale', 'Position', [50 50 1400 400]);
-for i = 1:length(grayImages)
-    subplot(2, length(grayImages), i);
-    imshow(grayImages{i});
-    title(sprintf('Original %d', i));
-    
-    subplot(2, length(grayImages), i + length(grayImages));
-    filtered = frequencyHighPass(grayImages{i}, 'GHPF', D0);
-    imshow(filtered);
-    title(sprintf('GHPF Filtered %d', i));
-    
-    fprintf('  Image %d: processed\n', i);
+D0_ring = 30;  
+[ihpf_ring, ~, ~] = ihpf(imgGray1, D0_ring, usePadding);
+[ghpf_ring, ~, ~] = ghpf(imgGray1, D0_ring, usePadding);
+diff_ring = abs(double(ihpf_ring) - double(ghpf_ring));
+
+figure('Name', 'Test 4: Ringing Effect (Slide 24-25)', 'Position', [50 50 1400 500]);
+
+subplot(1, 4, 1);
+imshow(imgGray1);
+title('Original');
+
+subplot(1, 4, 2);
+imshow(ihpf_ring);
+title(sprintf('IHPF D0=%d\nADA RINGING', D0_ring), 'Color', 'red');
+
+subplot(1, 4, 3);
+imshow(ghpf_ring);
+title(sprintf('GHPF D0=%d\nTIDAK ADA RINGING', D0_ring), 'Color', 'green');
+
+subplot(1, 4, 4);
+imshow(diff_ring, []);
+title('Difference (Ringing Artifact)');
+colorbar; colormap(gca, 'hot');
+
+sgtitle('Ringing Effect: IHPF (Diskontinuitas) vs GHPF (Smooth)', 'FontSize', 14);
+
+fprintf('   Kesimpulan: IHPF menimbulkan ringing karena transisi tajam\n');
+fprintf('               GHPF tidak ada ringing karena transisi smooth\n\n');
+
+%% 8. TEST 5 - EFFECT OF CUTOFF FREQUENCY (D0)
+fprintf('8. TEST 5: EFFECT OF CUTOFF FREQUENCY (D0)\n');
+fprintf('   Testing berbagai nilai D0 pada GHPF\n\n');
+
+D0_values = [10, 30, 50, 80, 120];
+
+figure('Name', 'Test 5: Effect of D0 on GHPF', 'Position', [50 50 1400 800]);
+
+for i = 1:length(D0_values)
+    D0_test = D0_values(i);
+    [result_test, ~, ~] = ghpf(imgGray1, D0_test, usePadding);
+
+    subplot(2, 3, i);
+    imshow(result_test);
+    title(sprintf('GHPF D0=%d', D0_test));
+
+    fprintf('   D0=%d: Mean intensity = %.2f\n', D0_test, mean(result_test(:)));
 end
 
-fprintf('Processing color images with GHPF (D0=%d)...\n', D0);
-figure('Name', 'Batch Processing - Color', 'Position', [50 50 1400 400]);
-for i = 1:length(colorImages)
-    subplot(2, length(colorImages), i);
-    imshow(colorImages{i});
-    title(sprintf('Original %d', i));
-    
-    subplot(2, length(colorImages), i + length(colorImages));
-    filtered = frequencyHighPass(colorImages{i}, 'GHPF', D0);
-    imshow(filtered);
-    title(sprintf('GHPF Filtered %d', i));
-    
-    fprintf('  Image %d: processed\n', i);
+subplot(2, 3, 6);
+imshow(imgGray1);
+title('Original');
+
+sgtitle('Effect of Cutoff Frequency (D0) on GHPF', 'FontSize', 14);
+fprintf('\n');
+
+%% 9. TEST 6 - EFFECT OF BUTTERWORTH ORDER
+fprintf('9. TEST 6: EFFECT OF BUTTERWORTH ORDER (n)\n');
+fprintf('   Testing berbagai orde Butterworth\n\n');
+
+n_values = [1, 2, 4, 8];
+
+figure('Name', 'Test 6: Effect of Butterworth Order', 'Position', [50 50 1400 800]);
+
+for i = 1:length(n_values)
+    n_test = n_values(i);
+    [result_test, H_test, ~] = bhpf(imgGray1, D0, n_test, usePadding);
+
+    subplot(2, 4, i);
+    imshow(result_test);
+    title(sprintf('BHPF n=%d', n_test));
+
+    subplot(2, 4, i+4);
+    plot(H_test(centerRow, :), 'LineWidth', 2);
+    title(sprintf('Profile n=%d', n_test));
+    xlabel('Frequency'); ylabel('H(u,v)');
+    grid on; ylim([0 1.1]);
+
+    fprintf('   n=%d: Transisi %s\n', n_test, iif(n_test < 3, 'smooth', 'tajam'));
 end
 
-%% 14. TEST 12 - RINGING COMPARISON
-fprintf('\n=== TEST 12: RINGING ARTIFACT ANALYSIS ===\n');
+sgtitle(sprintf('Effect of Butterworth Order (D0=%d)', D0), 'FontSize', 14);
+fprintf('\n');
 
-% IHPF has ringing, GHPF doesn't
-figure('Name', 'Ringing Artifacts', 'Position', [50 50 1400 600]);
+%% 10. TEST 7 - COLOR IMAGE HPF
+fprintf('10. TEST 7: HIGH-PASS FILTERING - COLOR IMAGE\n');
+fprintf('    Filtering dilakukan per-channel (R, G, B)\n\n');
 
-D0 = 50;
+fprintf('    Applying IHPF on color... ');
+tic; [ihpf_color, ~, ~] = ihpf(imgColor1, D0, usePadding); t1 = toc;
+fprintf('Done (%.4fs)\n', t1);
 
-subplot(2, 4, 1);
-imshow(imgGray3); title('Original');
+fprintf('    Applying GHPF on color... ');
+tic; [ghpf_color, ~, ~] = ghpf(imgColor1, D0, usePadding); t2 = toc;
+fprintf('Done (%.4fs)\n', t2);
 
-% IHPF - has ringing
-[filtered_IHPF, ~, spectrum_IHPF] = frequencyHighPass(imgGray3, 'IHPF', D0);
-subplot(2, 4, 2);
-imshow(filtered_IHPF); title('IHPF (Ringing)');
+fprintf('    Applying BHPF on color... ');
+tic; [bhpf_color, ~, ~] = bhpf(imgColor1, D0, n_butterworth, usePadding); t3 = toc;
+fprintf('Done (%.4fs)\n\n', t3);
 
-subplot(2, 4, 3);
-imshow(spectrum_IHPF.filter, []); title('IHPF Filter');
-colorbar;
+figure('Name', 'Test 7: HPF on Color Image', 'Position', [50 50 1400 900]);
 
-% GHPF - smooth, no ringing
-[filtered_GHPF, ~, spectrum_GHPF] = frequencyHighPass(imgGray3, 'GHPF', D0);
-subplot(2, 4, 6);
-imshow(filtered_GHPF); title('GHPF (No Ringing)');
+subplot(3, 4, 1);
+imshow(imgColor1);
+title('Original RGB');
 
-subplot(2, 4, 7);
-imshow(spectrum_GHPF.filter, []); title('GHPF Filter');
-colorbar;
+subplot(3, 4, 2);
+imshow(ihpf_color);
+title('IHPF Result');
 
-% Show difference
-subplot(2, 4, 4);
-diff = double(filtered_IHPF) - double(filtered_GHPF);
-imshow(diff, []);
-title('Difference (IHPF - GHPF)');
-colormap(gca, 'jet'); colorbar;
+subplot(3, 4, 3);
+imshow(ghpf_color);
+title('GHPF Result');
 
-% Line profiles
-subplot(2, 4, 8);
-centerRow = round(size(imgGray3, 1) / 2);
-plot(double(filtered_IHPF(centerRow, :)), 'b-', 'LineWidth', 2); hold on;
-plot(double(filtered_GHPF(centerRow, :)), 'r-', 'LineWidth', 2);
-legend('IHPF', 'GHPF');
-xlabel('Column'); ylabel('Intensity');
-title('Cross-Section Comparison');
-grid on;
+subplot(3, 4, 4);
+imshow(bhpf_color);
+title('BHPF Result');
+
+subplot(3, 4, 5);
+text(0.5, 0.5, 'GHPF Per-Channel', 'HorizontalAlignment', 'center', 'FontSize', 11);
+axis off;
+
+subplot(3, 4, 6);
+imshow(ghpf_color(:,:,1));
+title('Red Channel');
+
+subplot(3, 4, 7);
+imshow(ghpf_color(:,:,2));
+title('Green Channel');
+
+subplot(3, 4, 8);
+imshow(ghpf_color(:,:,3));
+title('Blue Channel');
+
+subplot(3, 4, 9);
+gray_orig = rgb2gray(imgColor1);
+imshow(gray_orig);
+title('Grayscale Original');
+
+subplot(3, 4, 10);
+gray_ihpf = rgb2gray(ihpf_color);
+imshow(gray_ihpf);
+title('IHPF Edges');
+
+subplot(3, 4, 11);
+gray_ghpf = rgb2gray(ghpf_color);
+imshow(gray_ghpf);
+title('GHPF Edges');
+
+subplot(3, 4, 12);
+gray_bhpf = rgb2gray(bhpf_color);
+imshow(gray_bhpf);
+title('BHPF Edges');
+
+sgtitle('High-Pass Filtering on RGB Image', 'FontSize', 14, 'FontWeight', 'bold');
+
+%% 11. TEST 8 - SIDE-BY-SIDE COMPARISON
+fprintf('11. TEST 8: SIDE-BY-SIDE COMPARISON\n\n');
+
+figure('Name', 'Test 8: Side-by-Side Comparison', 'Position', [50 50 1400 400]);
+
+% Grayscale
+subplot(1, 2, 1);
+gray_comparison = [imgGray1, ones(size(imgGray1,1), 10)*255, ...
+                   uint8(ihpf_gray1*255), ones(size(imgGray1,1), 10)*255, ...
+                   uint8(ghpf_gray1*255), ones(size(imgGray1,1), 10)*255, ...
+                   uint8(bhpf_gray1*255)];
+imshow(gray_comparison);
+title('Grayscale: Original | IHPF | GHPF | BHPF', 'FontSize', 12);
+
+% Color
+subplot(1, 2, 2);
+white_sep = ones(size(imgColor1,1), 10, 3);
+color_comparison = [imgColor1, white_sep, ...
+                    ihpf_color, white_sep, ...
+                    ghpf_color, white_sep, ...
+                    bhpf_color];
+imshow(color_comparison);
+title('Color: Original | IHPF | GHPF | BHPF', 'FontSize', 12);
+
+sgtitle('Side-by-Side Comparison', 'FontSize', 14, 'FontWeight', 'bold');
+
+%% 12. TEST 9 - COMPARISON
+fprintf('12. TEST 9: COMPARISON\n');
+fprintf('    Berbagai D0 untuk semua filter\n\n');
+
+D0_compare = [20, 40, 60];
+
+figure('Name', 'Test 9: Comprehensive Comparison', 'Position', [50 50 1400 900]);
+
+subplot(4, length(D0_compare)+1, 1);
+imshow(imgGray2);
+title('Original', 'FontWeight', 'bold');
+
+for i = 1:length(D0_compare)
+    D0_c = D0_compare(i);
+
+    [r_ihpf, H_ihpf_c, ~] = ihpf(imgGray2, D0_c, usePadding);
+    [r_ghpf, H_ghpf_c, ~] = ghpf(imgGray2, D0_c, usePadding);
+    [r_bhpf, H_bhpf_c, ~] = bhpf(imgGray2, D0_c, n_butterworth, usePadding);
+
+    subplot(4, length(D0_compare)+1, i+1);
+    imshow(r_ihpf);
+    title(sprintf('IHPF D0=%d', D0_c));
+
+    subplot(4, length(D0_compare)+1, length(D0_compare)+1 + i+1);
+    imshow(r_ghpf);
+    title(sprintf('GHPF D0=%d', D0_c));
+
+    subplot(4, length(D0_compare)+1, 2*(length(D0_compare)+1) + i+1);
+    imshow(r_bhpf);
+    title(sprintf('BHPF D0=%d', D0_c));
+
+    subplot(4, length(D0_compare)+1, 3*(length(D0_compare)+1) + i+1);
+    centerR = round(size(H_ihpf_c, 1) / 2);
+    plot(H_ihpf_c(centerR, :), 'b-', 'LineWidth', 1.5); hold on;
+    plot(H_ghpf_c(centerR, :), 'r-', 'LineWidth', 1.5);
+    plot(H_bhpf_c(centerR, :), 'g-', 'LineWidth', 1.5);
+    legend('IHPF', 'GHPF', 'BHPF', 'Location', 'best', 'FontSize', 7);
+    title(sprintf('Profile D0=%d', D0_c), 'FontSize', 9);
+    grid on; ylim([0 1.1]);
+end
+
+subplot(4, length(D0_compare)+1, length(D0_compare)+1 + 1);
+text(0.5, 0.5, 'GHPF', 'HorizontalAlignment', 'center', 'FontSize', 10, 'FontWeight', 'bold');
+axis off;
+
+subplot(4, length(D0_compare)+1, 2*(length(D0_compare)+1) + 1);
+text(0.5, 0.5, 'BHPF', 'HorizontalAlignment', 'center', 'FontSize', 10, 'FontWeight', 'bold');
+axis off;
+
+subplot(4, length(D0_compare)+1, 3*(length(D0_compare)+1) + 1);
+text(0.5, 0.5, 'Profiles', 'HorizontalAlignment', 'center', 'FontSize', 10, 'FontWeight', 'bold');
+axis off;
+
+sgtitle('Comprehensive HPF Comparison', 'FontSize', 14, 'FontWeight', 'bold');
+
+%% 13. SUMMARY
+fprintf('\n================================================================\n');
+fprintf('SUMMARY\n');
+fprintf('================================================================\n');
+fprintf('Parameter:\n');
+fprintf('  - D0 (cutoff frequency): %d\n', D0);
+fprintf('  - Butterworth order (n): %d\n', n_butterworth);
+fprintf('  - Padding: %s\n', iif(usePadding, '2x (P=2M, Q=2N)', 'No padding'));
+fprintf('\nWaktu Komputasi (Grayscale):\n');
+fprintf('  - IHPF: %.4f detik\n', time_ihpf);
+fprintf('  - GHPF: %.4f detik\n', time_ghpf);
+fprintf('  - BHPF: %.4f detik\n', time_bhpf);
+fprintf('================================================================\n\n');
+
+% Hitung jumlah figures
+allFigs = findall(0, 'Type', 'figure');
+numFigs = length(allFigs);
+fprintf('Program selesai! Total %d figures ditampilkan.\n', numFigs);
+
+%% Helper function
+function result = iif(condition, trueVal, falseVal)
+    if condition
+        result = trueVal;
+    else
+        result = falseVal;
+    end
+end
