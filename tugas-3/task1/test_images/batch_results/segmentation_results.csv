@@ -1,0 +1,13 @@
+Filename,Laplace,LoG,Sobel,Prewitt,Roberts,Canny
+Img1.jpg,5,82,0,0,5,288
+Img10.jpg,2,2,0,0,2,2
+Img11.jpg,0,858,0,0,0,1953
+Img12.jpg,2,35,0,0,2,2
+Img2.jpg,7,7,0,0,7,11
+Img3.jpg,6,13,3,3,12,47
+Img4.jpg,20,16,0,0,22,50
+Img5.jpg,4,3,0,0,4,4
+Img6.jpg,10,1,0,0,10,169
+Img7.jpg,15,14,0,0,5,32
+Img8.jpg,2,8,0,0,1,11
+Img9.png,9,20,0,0,8,58
